@@ -1593,7 +1593,7 @@ local function buildMenu()
 
     local title = Instance.new("TextLabel")
     title.BackgroundTransparency = 1
-    title.Size = UDim2.new(1, -120, 1, 0)
+    title.Size = UDim2.new(1, -160, 1, 0)
     title.Position = UDim2.new(0, 16, 0, 0)
     title.Font = Enum.Font.GothamBlack
     title.TextSize = 16
@@ -1604,7 +1604,7 @@ local function buildMenu()
 
     local themeBtn = Instance.new("TextButton")
     themeBtn.Size = UDim2.new(0, 34, 0, 34)
-    themeBtn.Position = UDim2.new(1, -80, 0.5, -17)
+    themeBtn.Position = UDim2.new(1, -120, 0.5, -17)
     themeBtn.BackgroundColor3 = BG3
     themeBtn.BorderSizePixel = 0
     themeBtn.Text = "🎨"
@@ -1616,7 +1616,7 @@ local function buildMenu()
 
     local minBtn = Instance.new("TextButton")
     minBtn.Size = UDim2.new(0, 34, 0, 34)
-    minBtn.Position = UDim2.new(1, -40, 0.5, -17)
+    minBtn.Position = UDim2.new(1, -80, 0.5, -17)
     minBtn.BackgroundColor3 = BG3
     minBtn.BorderSizePixel = 0
     minBtn.Text = "—"
@@ -1625,6 +1625,18 @@ local function buildMenu()
     minBtn.TextColor3 = Color3.fromRGB(220,220,220)
     minBtn.Parent = header
     Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 8)
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 34, 0, 34)
+    closeBtn.Position = UDim2.new(1, -40, 0.5, -17)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(80,25,35)
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = "X"
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 16
+    closeBtn.TextColor3 = Color3.fromRGB(255,180,180)
+    closeBtn.Parent = header
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
 
     -- ============================================================
     -- DRAG — глобальный, через UIS.InputBegan + проверка попадания в header
@@ -1642,8 +1654,7 @@ local function buildMenu()
             and i.UserInputType ~= Enum.UserInputType.Touch then return end
             if not main.Visible then return end
             if not inside(i.Position, header) then return end
-            -- не начинаем drag если тапнули на кнопках header'а
-            if inside(i.Position, minBtn) or inside(i.Position, themeBtn) then return end
+            if inside(i.Position, minBtn) or inside(i.Position, themeBtn) or inside(i.Position, closeBtn) then return end
             dragging = true
             dragStart = i.Position
             startPos = main.Position
@@ -2114,6 +2125,17 @@ local function buildMenu()
         for i,k in ipairs(keys) do if k==cur then idx=i break end end
         idx = idx%#keys+1
         setTheme(keys[idx])
+    end)
+
+    -- ============================================================
+    -- CLOSE — полный выгрузка скрипта
+    -- ============================================================
+    closeBtn.MouseButton1Click:Connect(function()
+        if getgenv().UN_ADDON and getgenv().UN_ADDON.unload then
+            pcall(function() getgenv().UN_ADDON.unload() end)
+        else
+            if sg and sg.Parent then sg:Destroy() end
+        end
     end)
 
     -- minimize
