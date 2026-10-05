@@ -1340,7 +1340,6 @@ local function clESP()
         if x:IsA("Highlight") and x.Name=="sHL" then x:Destroy() end
     end
 end
--- Role Tag (text above head)
 local ESP_TXT={ Murderer=Color3.fromRGB(255,60,60), Sheriff=Color3.fromRGB(70,150,255), Hero=Color3.fromRGB(70,150,255) }
 local espTxtTags={}
 local function roleLabel(pl)
@@ -1572,7 +1571,6 @@ local function buildMenu()
     sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     sg.Parent = PG
 
-    -- main window
     local main = Instance.new("Frame")
     main.Name = "Main"
     main.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1585,7 +1583,6 @@ local function buildMenu()
     Instance.new("UICorner", main).CornerRadius = UDim.new(0, 14)
     local mst = Instance.new("UIStroke", main); mst.Color = A; mst.Thickness = 1.5
 
-    -- Header (drag zone)
     local header = Instance.new("Frame")
     header.Name = "Header"
     header.Size = UDim2.new(1, 0, 0, 46)
@@ -1602,7 +1599,7 @@ local function buildMenu()
     title.TextSize = 16
     title.TextColor3 = Color3.new(1,1,1)
     title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Text = "★ StarWare  ⠿"
+    title.Text = "⠿  ★ StarWare"
     title.Parent = header
 
     local themeBtn = Instance.new("TextButton")
@@ -1629,21 +1626,37 @@ local function buildMenu()
     minBtn.Parent = header
     Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 8)
 
-    -- Drag (touch + mouse)
+    -- ============================================================
+    -- DRAG — глобальный, через UIS.InputBegan + проверка попадания в header
+    -- ============================================================
     do
         local dragging, dragStart, startPos
+        local function inside(pos, frame)
+            if not frame or not frame.Parent then return false end
+            local ap, as = frame.AbsolutePosition, frame.AbsoluteSize
+            return pos.X >= ap.X and pos.X <= ap.X + as.X
+               and pos.Y >= ap.Y and pos.Y <= ap.Y + as.Y
+        end
         local function begin(i)
-            if i.UserInputType == Enum.UserInputType.MouseButton1
-            or i.UserInputType == Enum.UserInputType.Touch then
-                dragging = true; dragStart = i.Position; startPos = main.Position
-            end
+            if i.UserInputType ~= Enum.UserInputType.MouseButton1
+            and i.UserInputType ~= Enum.UserInputType.Touch then return end
+            if not main.Visible then return end
+            if not inside(i.Position, header) then return end
+            -- не начинаем drag если тапнули на кнопках header'а
+            if inside(i.Position, minBtn) or inside(i.Position, themeBtn) then return end
+            dragging = true
+            dragStart = i.Position
+            startPos = main.Position
         end
         local function move(i)
             if not dragging then return end
             if i.UserInputType ~= Enum.UserInputType.MouseMovement
             and i.UserInputType ~= Enum.UserInputType.Touch then return end
             local d = i.Position - dragStart
-            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X, startPos.Y.Scale, startPos.Y.Offset+d.Y)
+            main.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + d.X,
+                startPos.Y.Scale, startPos.Y.Offset + d.Y
+            )
         end
         local function endDrag(i)
             if i.UserInputType == Enum.UserInputType.MouseButton1
@@ -1651,13 +1664,11 @@ local function buildMenu()
                 dragging = false
             end
         end
-        header.InputBegan:Connect(begin)
-        header.InputEnded:Connect(endDrag)
+        UIS.InputBegan:Connect(begin)
         UIS.InputChanged:Connect(move)
         UIS.InputEnded:Connect(endDrag)
     end
 
-    -- Tab bar
     local tabBar = Instance.new("Frame")
     tabBar.Size = UDim2.new(1, -16, 0, 40)
     tabBar.Position = UDim2.new(0, 8, 0, 54)
@@ -1684,7 +1695,6 @@ local function buildMenu()
     local tp = Instance.new("UIPadding", tabScroll)
     tp.PaddingLeft = UDim.new(0, 8); tp.PaddingRight = UDim.new(0, 8)
 
-    -- Content
     local content = Instance.new("Frame")
     content.Size = UDim2.new(1, -16, 1, -152)
     content.Position = UDim2.new(0, 8, 0, 102)
@@ -1693,7 +1703,6 @@ local function buildMenu()
     content.ClipsDescendants = true
     content.Parent = main
 
-    -- widgets
     local function section(parent, text)
         local f = Instance.new("Frame")
         f.Size = UDim2.new(1, -8, 0, 24)
@@ -1839,8 +1848,6 @@ local function buildMenu()
         return f, upd
     end
 
-    -- pages
-    local pages = {}
     local tabs = {}
     local function addTab(name, order)
         local b = Instance.new("TextButton")
@@ -1886,19 +1893,14 @@ local function buildMenu()
         return page, entry
     end
 
-    local firstTab
-    local function activateFirst()
+    task.defer(function()
         if tabs[1] then
             tabs[1].btn.BackgroundColor3 = A
             tabs[1].btn.TextColor3 = Color3.new(1,1,1)
             tabs[1].page.Visible = true
         end
-    end
-    task.defer(activateFirst)
+    end)
 
-    -- ============================================================
-    -- TABS & CONTENT
-    -- ============================================================
     -- COMBAT
     local pCombat = addTab("Combat", 1)
     section(pCombat, "Silent Aim")
@@ -1917,10 +1919,6 @@ local function buildMenu()
             if not grab_desc_conn then grab_desc_conn = workspace.DescendantAdded:Connect(grab_desc_added) end
             task.spawn(scan_guns)
         else grab_desc_stop() end
-    end)
-    toggle(pCombat, "Bullet Tracer",  function() return TRACE.on end,   function(v)
-        TRACE.on = v
-        if v then task.spawn(connect_trace_fn) end
     end)
 
     -- MOVE
@@ -2040,6 +2038,11 @@ local function buildMenu()
     toggle(pV, "Orb Aura",        function() return fl.orbAura end, function(v) fl.orbAura=v; if v then mkOrb() else clOrb() end end)
     toggle(pV, "Ghost Trail",     function() return fl.ghost end, function(v) fl.ghost=v; if v then mkGhost() else clGhost() end end)
     toggle(pV, "Footsteps",       function() return fl.foot end, function(v) fl.foot=v; if v then mkFoot() else clFoot() end end)
+    toggle(pV, "Bullet Tracer",   function() return TRACE.on end, function(v)
+        TRACE.on = v
+        fl.tracer = v
+        if v then task.spawn(connect_trace_fn) else disableTracer_fn() end
+    end)
 
     -- MODEL
     local pModel = addTab("Model", 5)
@@ -2104,7 +2107,6 @@ local function buildMenu()
         end
     end)
 
-    -- THEME quick button
     themeBtn.MouseButton1Click:Connect(function()
         local keys = {}
         for k in pairs(TH) do keys[#keys+1]=k end
