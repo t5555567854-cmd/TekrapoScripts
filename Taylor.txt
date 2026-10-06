@@ -86,7 +86,6 @@ local function loadBinds()
     end)
 end
 
--- state
 local SA = { enabled=true, part="Torso", quiet=true, wb=true, wbTemp=nil, antiJump=true }
 local SA_hist = {}
 local KS = { enabled=false }
@@ -150,7 +149,7 @@ local startInfJump, stopInfJump, startNoclip, stopNoclip
 local startFly, stopFly, startSpin, stopSpin, moveReset
 local applyTime, toggleFog, ka_tick, hookKills
 local bt_destroy, bt_build, bt_update, bt_conn
-local openColorPicker
+local openColorPicker, restore_wb
 
 -- roles
 local roleCacheMod=nil
@@ -158,7 +157,7 @@ local roleCache={}
 local roleCacheStamp=0
 local function refreshRoleCache()
     local now=os.clock()
-    if now-roleCacheStamp<0.5 and next(roleCache) then return end
+    if now-roleCacheStamp<0.4 and next(roleCache) then return end
     roleCacheStamp=now
     if not roleCacheMod then
         local ok,m=pcall(function() return require(Replicated:WaitForChild("Modules"):WaitForChild("CurrentRoundClient")) end)
@@ -220,7 +219,6 @@ local function refresh_target()
             local h=p.Character and p.Character:FindFirstChild("Head")
             if h then
                 local d=(h.Position-Cam.CFrame.Position).Magnitude
-                -- anti-jump priority: if target is jump-spamming, prefer him
                 if SA.antiJump then
                     local hv=p.Character:FindFirstChildOfClass("Humanoid")
                     if hv and hv.FloorMaterial==Enum.Material.Air then d = d * 0.5 end
@@ -275,7 +273,7 @@ local function sample_ping()
     if EC.seen then EC.rtt=EC.rtt*0.85+rtt*0.15 else EC.rtt=rtt; EC.seen=true end
 end
 
--- aim
+-- aim loop
 task.spawn(function()
     while ADDON.loaded do
         task.wait(0.05)
@@ -286,7 +284,7 @@ task.spawn(function()
                 local list = SA_hist[h] or {}
                 SA_hist[h] = list
                 table.insert(list, { os.clock(), h.Position })
-                while #list > 4 and os.clock() - list[1][1] > 0.5 do
+                while #list > 5 and os.clock() - list[1][1] > 0.5 do
                     table.remove(list, 1)
                 end
             end
@@ -299,19 +297,20 @@ task.spawn(function()
     end
 end)
 
+-- улучшенная скорость: weighted по свежести
 local function SA_getVel(root)
     local list = SA_hist[root]
     if not list or #list < 2 then return root.AssemblyLinearVelocity end
-    -- сглаженная скорость по 4 сэмплам
     local vx, vy, vz, w = 0, 0, 0, 0
-    for i=2,#list do
+    local N = #list
+    for i=2,N do
         local a, b = list[i-1], list[i]
         local dt = b[1] - a[1]
-        if dt > 0.005 then
-            local ww = dt
-            vx = vx + (b[2].X - a[2].X) / dt * ww
-            vy = vy + (b[2].Y - a[2].Y) / dt * ww
-            vz = vz + (b[2].Z - a[2].Z) / dt * ww
+        if dt > 0.005 and dt < 0.3 then
+            local ww = (i / N) * (1 / dt)
+            vx = vx + (b[2].X - a[2].X) * ww
+            vy = vy + (b[2].Y - a[2].Y) * ww
+            vz = vz + (b[2].Z - a[2].Z) * ww
             w = w + ww
         end
     end
@@ -389,48 +388,51 @@ get_ws_fn=function()
     return WSH.m
 end
 
+restore_wb = function()
+    if SA.wbTemp then
+        pcall(function() SA.wbTemp.att.WorldCFrame = SA.wbTemp.orig end)
+        SA.wbTemp = nil
+    end
+end
+
 local function resolve()
     if not SA.enabled then return nil end
     if not target_p or not target_p.Character then
         pcall(refresh_target)
         if not target_p then return nil end
     end
-    if not target_part or not target_part.Parent then pcall(refresh_target) end
-    if not target_part or not target_part.Parent then
-        local c = target_char
-        local f = c and (c:FindFirstChild("Head") or c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("UpperTorso") or c:FindFirstChild("Torso"))
-        if f and f.Parent then target_part = f else return nil end
-    end
     local c = target_char
+    if not c or not c.Parent then pcall(refresh_target); c = target_char end
     if not c then return nil end
     local root = c:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
 
     local vel = SA_getVel(root)
-    local lead = math.clamp(EC.rtt, 0, 0.45)
-    if lead < 0.05 then lead = 0.1 end
+    local lead = math.clamp(EC.rtt, 0.05, 0.4)
+    if lead < 0.08 then lead = 0.08 end
 
     local hum2 = c:FindFirstChildOfClass("Humanoid")
     local dy = 0
     if hum2 and hum2.FloorMaterial == Enum.Material.Air then
         local vy = root.AssemblyLinearVelocity.Y
         dy = vy * lead - 0.5 * workspace.Gravity * lead * lead
+    else
+        dy = math.clamp(vel.Y * lead, -3, 3)
     end
+    if hum2 and hum2:GetState() == Enum.HumanoidStateType.Jumping then
+        dy = dy + (hum2.JumpPower or 50) * 0.012
+    end
+
     local off = Vector3.new(vel.X * lead, dy, vel.Z * lead)
 
-    local mChar = c
     local myChar = LP.Character
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
     local att = myRoot and myRoot:FindFirstChild("GunRaycastAttachment")
     local muzzle = att and att.WorldPosition or (myRoot and myRoot.Position)
 
-    -- wallbang: временно перемещаем attachment в видимую точку
     local wbSpot
-    if SA.wb and muzzle then
-        local blocked = SA_rayBlocked(muzzle, root.Position, { mChar, myChar })
-        if blocked and not SA_anyVisible(mChar, muzzle) then
-            wbSpot = SA_findWbSpot(root, muzzle)
-        end
+    if SA.wb and muzzle and SA_rayBlocked(muzzle, root.Position, { c, myChar }) and not SA_anyVisible(c, muzzle) then
+        wbSpot = SA_findWbSpot(root, muzzle)
     end
     if wbSpot and att then
         SA.wbTemp = { att = att, orig = att.WorldCFrame }
@@ -444,11 +446,15 @@ local function resolve()
         quietCf = SA_findQuietSpot(root, myChar)
     end
 
-    local order = SA.part == "Head" and { "Head", "UpperTorso", "Torso", "HumanoidRootPart" }
+    local order = SA.part == "Head"
+        and { "Head", "UpperTorso", "Torso", "HumanoidRootPart" }
         or { "UpperTorso", "Torso", "LowerTorso", "HumanoidRootPart", "Head" }
-    local fallback
-    rp.FilterDescendantsInstances = { myChar, workspace.CurrentCamera }
+
     local fromPos = wbSpot or (quietCf and quietCf.Position) or muzzle or root.Position
+    rp.FilterDescendantsInstances = { myChar, workspace.CurrentCamera }
+
+    local bestPt, bestDist
+    local fallback
     for _, name in ipairs(order) do
         local part = c:FindFirstChild(name)
         if part and part:IsA("BasePart") then
@@ -457,18 +463,14 @@ local function resolve()
             local dir = aimPos - fromPos
             local hit = workspace:Raycast(fromPos, dir, rp)
             if not hit or hit.Instance:IsDescendantOf(c) then
-                return aimPos
+                local d = (aimPos - fromPos).Magnitude
+                if not bestDist or d < bestDist then
+                    bestDist = d; bestPt = aimPos
+                end
             end
         end
     end
-    return fallback or (root.Position + off)
-end
-
-local function restore_wb()
-    if SA.wbTemp then
-        pcall(function() SA.wbTemp.att.WorldCFrame = SA.wbTemp.orig end)
-        SA.wbTemp = nil
-    end
+    return bestPt or fallback or (root.Position + off)
 end
 
 install_hooks=function()
@@ -491,18 +493,19 @@ install_hooks=function()
             local orig = cur[name]
             cur[name] = function(self, ...)
                 local pt = resolve()
+                local r = orig(self, ...)
+                if SA.wbTemp then restore_wb() end
                 if pt then
                     local n = select("#", ...)
                     if n >= 2 then return pt end
                     return CFrame.new(pt)
                 end
-                return orig(self, ...)
+                return r
             end
             WSH.hooked[name] = orig
         end
     end
 
-    -- fire functions: restore wb attachment right after
     local fireCandidates = {
         "FireServer","Fire","Shoot","FireGun","FireWeapon","FireBullet","ShootGun","TriggerGun",
     }
@@ -533,7 +536,6 @@ getgenv().KNIFE_AIM_RESOLVE=function()
     return CFrame.new(part.Position+vel)
 end
 
--- kill aura
 ka_tick=function()
     if not KA.on then return end
     local c=LP.Character; if not c then return end
@@ -568,7 +570,6 @@ ka_tick=function()
     if fired then KA.last=now end
 end
 
--- grab gun
 local function grab_has_role()
     if not grab_round_mod then
         local ok,m=pcall(function() return require(Replicated:WaitForChild("Modules"):WaitForChild("CurrentRoundClient")) end)
@@ -607,7 +608,6 @@ local function grab_desc_stop()
     if grab_desc_conn then pcall(function() grab_desc_conn:Disconnect() end) grab_desc_conn=nil end
 end
 
--- tracer
 local function to_pos(v)
     if typeof(v)=="Vector3" then return v end
     if typeof(v)=="CFrame" then return v.Position end
@@ -657,7 +657,6 @@ disableTracer_fn=function()
 end
 connect_trace_fn=enableTracer_fn
 
--- backtrack
 bt_destroy=function()
     if BT.model then pcall(function() BT.model:Destroy() end); BT.model=nil end
     BT.cache={}; BT.hist={}; BT.first=1; BT.n=0
@@ -727,7 +726,6 @@ bt_update=function()
 end
 bt_conn=RS.Heartbeat:Connect(function() if BT.on then pcall(bt_update) end end)
 
--- move
 applySpeed=function() local h=hum(); if h then h.WalkSpeed=MOVE.speedOn and MOVE.speed or 16 end end
 applyJump=function() local h=hum(); if h then h.JumpPower=MOVE.jumpOn and MOVE.jump or 50 end end
 applyHip=function() local h=hum(); if h then h.HipHeight=MOVE.hipOn and MOVE.hip or 2 end end
@@ -812,8 +810,6 @@ startSpin=function()
 end
 stopSpin=function() if spinConn then spinConn:Disconnect(); spinConn=nil end end
 
--- anti-jump: пихаем спам-джамперов вниз через BodyVelocity на их HRP (клиентская сторона, работает если владеем сетью — редко)
--- практичнее: авто-target приоритет + ускоренная реакция предикта на вертикальную скорость
 local function startAntiJump()
     if antiJumpConn then return end
     antiJumpConn = RS.Heartbeat:Connect(function()
@@ -826,7 +822,6 @@ local function startAntiJump()
                 if h and hrp and h.FloorMaterial==Enum.Material.Air then
                     local myRoot = HRP()
                     if myRoot and (hrp.Position - myRoot.Position).Magnitude <= MOVE.antiJumpRad then
-                        -- приоритет аима на этого игрока
                         if target_p ~= p then
                             target_p = p
                             target_char = c
@@ -877,7 +872,6 @@ task.spawn(function()
     end
 end)
 
--- fling
 local function flingCore(thrp,thum,time)
     local c=LP.Character
     local hrp=c and c:FindFirstChild("HumanoidRootPart"); if not hrp then return false end
@@ -1340,7 +1334,6 @@ toggleFog=function(v)
     else L.FogEnd=1e6; L.FogStart=0 end
 end
 
--- esp
 local function mkESP()
     if espC then return end
     espC=RS.Heartbeat:Connect(function()
@@ -1439,7 +1432,6 @@ local function updateRoleTags()
     end
 end
 
--- jump
 local function mkJump()
     if jumpC then jumpC:Disconnect() end
     local c=LP.Character; if not c then return end
@@ -1491,7 +1483,6 @@ local function mkJump()
 end
 local function clJump() if jumpC then jumpC:Disconnect(); jumpC=nil end end
 
--- kill lightning
 local function killLightning(pos)
     local bm=Instance.new("Part")
     bm.Name="sKl"; bm.Size=Vector3.new(1.5,80,1.5)
@@ -1531,7 +1522,6 @@ hookKills=function()
     end
 end
 
--- headless
 local function applySkinAll()
     local c=LP.Character; if not c then return end
     local h=c:FindFirstChild("Head")
@@ -1544,7 +1534,6 @@ local function applySkinAll()
     end
 end
 
--- kill all
 local function killAll()
     local c=LP.Character; if not c then notif("no character",false) return end
     local knife=c:FindFirstChild("Knife")
@@ -1581,9 +1570,9 @@ local function killAll()
 end
 
 -- ============================================================
--- HSV color picker modal
+-- HSV PICKER
 -- ============================================================
-local function openColorPicker(initial, callback)
+openColorPicker = function(initial, callback)
     local existing = PG:FindFirstChild("UN_COLOR_PICKER")
     if existing then existing:Destroy() end
 
@@ -1605,6 +1594,9 @@ local function openColorPicker(initial, callback)
     Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 14)
     local fst = Instance.new("UIStroke", frame)
     fst.Color = Color3.fromRGB(80,80,100); fst.Thickness = 1.2
+    local sc = Instance.new("UIScale", frame)
+    sc.Scale = 0.8
+    Tween:Create(sc, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Scale=1}):Play()
 
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, 0, 0, 30)
@@ -1615,14 +1607,12 @@ local function openColorPicker(initial, callback)
     title.Text = "COLOR PICKER"
     title.Parent = frame
 
-    -- hsv state
     local h, s, v = 0, 1, 1
     do
         local hh, ss, vv = initial:ToHSV()
         h, s, v = hh, ss, vv
     end
 
-    -- SV square
     local sq = Instance.new("Frame")
     sq.Size = UDim2.new(1, -32, 0, 150)
     sq.Position = UDim2.new(0, 16, 0, 40)
@@ -1654,15 +1644,10 @@ local function openColorPicker(initial, callback)
     cursor.AnchorPoint = Vector2.new(0.5, 0.5)
     cursor.BackgroundTransparency = 1
     cursor.ZIndex = 5
-    local cursorStroke = Instance.new("UIStroke", cursor)
-    cursorStroke.Color = Color3.new(1,1,1); cursorStroke.Thickness = 2
-    cursorStroke.Transparency = 0
+    local cs1 = Instance.new("UIStroke", cursor)
+    cs1.Color = Color3.new(1,1,1); cs1.Thickness = 2
     Instance.new("UICorner", cursor).CornerRadius = UDim.new(1, 0)
-    local cursorInner = Instance.new("UIStroke", cursor)
-    cursorInner.Color = Color3.new(0,0,0); cursorInner.Thickness = 1
-    cursorInner.Transparency = 0.5
 
-    -- hue slider
     local hueBar = Instance.new("Frame")
     hueBar.Size = UDim2.new(1, -32, 0, 18)
     hueBar.Position = UDim2.new(0, 16, 0, 200)
@@ -1684,10 +1669,9 @@ local function openColorPicker(initial, callback)
     hueCursor.BackgroundColor3 = Color3.new(1,1,1)
     hueCursor.BorderSizePixel = 0
     Instance.new("UICorner", hueCursor).CornerRadius = UDim.new(0, 4)
-    local hcStroke = Instance.new("UIStroke", hueCursor)
-    hcStroke.Color = Color3.fromRGB(0,0,0); hcStroke.Thickness = 1
+    local hc1 = Instance.new("UIStroke", hueCursor)
+    hc1.Color = Color3.fromRGB(0,0,0); hc1.Thickness = 1
 
-    -- preview + hex
     local preview = Instance.new("Frame")
     preview.Size = UDim2.new(0, 60, 0, 30)
     preview.Position = UDim2.new(0, 16, 0, 232)
@@ -1720,7 +1704,6 @@ local function openColorPicker(initial, callback)
     end
     upd()
 
-    -- input
     local draggingSV, draggingHue = false, false
     local function setFromSq(pos)
         local ap, as = sq.AbsolutePosition, sq.AbsoluteSize
@@ -1755,7 +1738,6 @@ local function openColorPicker(initial, callback)
         end
     end)
 
-    -- buttons
     local function mkBtn(text, xo, col, cb)
         local b = Instance.new("TextButton")
         b.Size = UDim2.new(0, 80, 0, 30)
@@ -1779,7 +1761,6 @@ local function openColorPicker(initial, callback)
         modal:Destroy()
     end)
 
-    -- drag modal
     do
         local d, ds, sp
         title.InputBegan:Connect(function(i)
@@ -1819,13 +1800,15 @@ local function buildMenu()
     main.BackgroundColor3 = BG
     main.BorderSizePixel = 0
     main.Active = true
+    main.Visible = false
+    main.Rotation = 0
     main.Parent = sg
     Instance.new("UICorner", main).CornerRadius = UDim.new(0, 16)
     local mst = Instance.new("UIStroke", main)
     mst.Color = A; mst.Thickness = 1.5; mst.Transparency = 0.25
     local mstGrad = Instance.new("UIGradient", mst)
     mstGrad.Color = ColorSequence.new(A, A2); mstGrad.Rotation = 45
-    local mainScale = Instance.new("UIScale", main); mainScale.Scale = 0.9
+    local mainScale = Instance.new("UIScale", main); mainScale.Scale = 0.0
 
     local glow = Instance.new("Frame", main)
     glow.Size = UDim2.new(1, 20, 1, 20)
@@ -1887,7 +1870,7 @@ local function buildMenu()
     subtitle.TextSize = 9
     subtitle.TextColor3 = A2
     subtitle.TextXAlignment = Enum.TextXAlignment.Left
-    subtitle.Text = "v3 · silent · wallbang · hsv"
+    subtitle.Text = "v3.1 · silent · wallbang · hsv"
     subtitle.Parent = header
 
     local function winBtn(label, xo, baseColor)
@@ -2005,8 +1988,8 @@ local function buildMenu()
         bar.BackgroundColor3 = A
         bar.BorderSizePixel = 0
         Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-        local barGrad = Instance.new("UIGradient", bar)
-        barGrad.Color = ColorSequence.new(A, A2); barGrad.Rotation = 90
+        local bg2 = Instance.new("UIGradient", bar)
+        bg2.Color = ColorSequence.new(A, A2); bg2.Rotation = 90
         local l = Instance.new("TextLabel")
         l.BackgroundTransparency = 1
         l.Size = UDim2.new(1, -8, 1, 0)
@@ -2241,8 +2224,23 @@ local function buildMenu()
             fadeOverlay.BackgroundTransparency = 0
             Tween:Create(fadeOverlay, TweenInfo.new(0.3), {BackgroundTransparency=1}):Play()
             page.CanvasPosition = Vector2.zero
-            page.Position = UDim2.new(0, 0, 0, 12)
-            Tween:Create(page, TweenInfo.new(0.3, Enum.EasingStyle.Quint), {Position=UDim2.new(0,0,0,0)}):Play()
+            page.Position = UDim2.new(0, 20, 0, 0)
+            Tween:Create(page, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+                {Position = UDim2.new(0,0,0,0)}):Play()
+            local ripple = Instance.new("Frame", b)
+            ripple.Size = UDim2.new(0, 0, 0, 0)
+            ripple.Position = UDim2.new(0.5, 0, 0.5, 0)
+            ripple.AnchorPoint = Vector2.new(0.5, 0.5)
+            ripple.BackgroundColor3 = Color3.new(1,1,1)
+            ripple.BackgroundTransparency = 0.55
+            ripple.BorderSizePixel = 0
+            ripple.ZIndex = 5
+            Instance.new("UICorner", ripple).CornerRadius = UDim.new(1, 0)
+            Tween:Create(ripple, TweenInfo.new(0.45, Enum.EasingStyle.Quart), {
+                Size = UDim2.new(0, 120, 0, 120),
+                BackgroundTransparency = 1
+            }):Play()
+            task.delay(0.5, function() if ripple.Parent then ripple:Destroy() end end)
         end)
         return page, entry
     end
@@ -2255,7 +2253,6 @@ local function buildMenu()
             if g then g.Color = ColorSequence.new(A, A2) end
             tabs[1].page.Visible = true
         end
-        Tween:Create(mainScale, TweenInfo.new(0.4, Enum.EasingStyle.Back), {Scale=1}):Play()
     end)
 
     local startT = os.clock()
@@ -2504,7 +2501,6 @@ local function buildMenu()
         if key=="atmo"      and fl.atmo      then pcall(clAtmo);  pcall(mkAtmo)  end
     end
 
-    -- preset circles + custom picker button
     local presetColors = {
         Color3.fromRGB(0,220,255), Color3.fromRGB(160,80,255),
         Color3.fromRGB(255,100,200), Color3.fromRGB(255,80,80),
@@ -2535,7 +2531,6 @@ local function buildMenu()
         end)
     end
 
-    -- custom button (open picker)
     local cust = Instance.new("TextButton")
     cust.Size = UDim2.new(0, 28, 0, 28)
     cust.BackgroundColor3 = Color3.fromRGB(60,60,75)
@@ -2585,11 +2580,9 @@ local function buildMenu()
         if v then task.spawn(connect_trace_fn) else disableTracer_fn() end
     end)
 
-    -- MODEL
     local pModel = addTab("Model", 5)
     toggle(pModel, "Headless", function() return fl.headless==true end, function(v) fl.headless=v; pcall(applySkinAll) end)
 
-    -- JUMP
     local pJ = addTab("Jump", 6)
     toggle(pJ, "Jump Circles", function() return fl.jump end, function(v) fl.jump=v; if v then mkJump() else clJump() end end)
     section(pJ, "Style")
@@ -2598,7 +2591,6 @@ local function buildMenu()
     button(pJ, "Triple Ripple",  function() jStyle = "Ripple" end)
     button(pJ, "Particle Burst", function() jStyle = "Particles" end)
 
-    -- WORLD
     local pW = addTab("World", 7)
     toggle(pW, "Cyberpunk Atmo", function() return fl.atmo end, function(v) fl.atmo=v; if v then mkAtmo() else clAtmo() end end)
     toggle(pW, "FullBright",     function() return fl.fb end, function(v) fl.fb=v; if v then mkFB() else clFB() end end)
@@ -2611,7 +2603,6 @@ local function buildMenu()
     button(pW, "Cyber",  function() applyTime("Cyber") end)
     toggle(pW, "Fog", function() return fl._fog end, function(v) fl._fog=v; toggleFog(v) end)
 
-    -- ESP
     local pE = addTab("ESP", 8)
     toggle(pE, "Role ESP",  function() return fl.esp end, function(v) fl.esp=v; if v then mkESP() else clESP() end end)
     toggle(pE, "Ghost ESP", function() return fl.espGhost end, function(v) fl.espGhost=v end)
@@ -2620,7 +2611,6 @@ local function buildMenu()
         if not v then for pl in pairs(espTxtTags) do detachRoleTag(pl) end end
     end)
 
-    -- THEME
     local pT = addTab("Theme", 9)
     local function setTheme(name)
         cur = name
@@ -2680,7 +2670,6 @@ local function buildMenu()
         end)
     end)
 
-    -- EXTRA
     local pX = addTab("Extra", 10)
     toggle(pX, "Kill Lightning", function() return killOn end, function(v) killOn=v end)
     toggle(pX, "Backtrack", function() return BT.on end, function(v)
@@ -2713,6 +2702,7 @@ local function buildMenu()
     showStroke.Color = A2; showStroke.Thickness = 1.5; showStroke.Transparency = 0.2
     local showGrad = Instance.new("UIGradient", showBtn)
     showGrad.Color = ColorSequence.new(A, A2); showGrad.Rotation = 45
+    local showScale = Instance.new("UIScale", showBtn); showScale.Scale = 1
 
     do
         local d, ds, sp
@@ -2735,27 +2725,32 @@ local function buildMenu()
             or i.UserInputType == Enum.UserInputType.Touch then
                 local moved = (i.Position - ds).Magnitude
                 d = false
-                if moved < 8 then
-                    main.Visible = true
-                    showBtn.Visible = false
-                    mainScale.Scale = 0.85
-                    Tween:Create(mainScale, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Scale=1}):Play()
-                end
+                if moved < 8 then showMenu() end
             end
         end)
     end
 
     local function hideMenu()
-        main.Visible = false
-        showBtn.Visible = true
-        showBtn.BackgroundColor3 = A
-        showStroke.Color = A2
+        if not main.Visible then return end
+        local s = Tween:Create(mainScale, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Scale=0})
+        local r = Tween:Create(main, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Rotation=4})
+        s:Play(); r:Play()
+        s.Completed:Connect(function()
+            main.Visible = false
+            showBtn.Visible = true
+            showBtn.BackgroundColor3 = A
+            showStroke.Color = A2
+            showScale.Scale = 0.4
+            Tween:Create(showScale, TweenInfo.new(0.4, Enum.EasingStyle.Back), {Scale=1}):Play()
+        end)
     end
-    local function showMenu()
-        main.Visible = true
+    function showMenu()
         showBtn.Visible = false
-        mainScale.Scale = 0.85
-        Tween:Create(mainScale, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Scale=1}):Play()
+        main.Visible = true
+        mainScale.Scale = 0.0
+        main.Rotation = -3
+        Tween:Create(mainScale, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
+        Tween:Create(main, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Rotation=0}):Play()
     end
 
     themeBtn.MouseButton1Click:Connect(function()
@@ -2783,12 +2778,16 @@ local function buildMenu()
         end
     end)
 
+    task.defer(function()
+        task.wait(0.05)
+        showMenu()
+    end)
+
     return sg
 end
 
 local menuGui = buildMenu()
 
--- BIND LISTENER
 ADDON.bindConn = UIS.InputBegan:Connect(function(input, gp)
     if bindPicking then
         if input.KeyCode == Enum.KeyCode.Escape then
@@ -2835,12 +2834,11 @@ ADDON.idleConn = LP.Idled:Connect(function()
     end
 end)
 
--- MAIN LOOP
 ADDON.hb = RS.Heartbeat:Connect(function()
     if not ADDON.loaded then return end
     pcall(function()
         local now = os.clock()
-        if now - (ADDON.role_acc or 0) >= 0.15 then
+        if now - (ADDON.role_acc or 0) >= 0.08 then
             ADDON.role_acc = now
             refresh_target()
         end
@@ -2865,7 +2863,7 @@ ADDON.hb = RS.Heartbeat:Connect(function()
                 end)
             end
         end
-        if now - (ADDON.hook_acc or 0) >= 1 then
+        if now - (ADDON.hook_acc or 0) >= 0.5 then
             ADDON.hook_acc = now
             install_hooks()
             if TRACE.on then connect_trace_fn() end
@@ -2913,7 +2911,6 @@ task.spawn(function()
     startAntiJump()
 end)
 
--- UNLOAD
 ADDON.unload = function()
     ADDON.loaded = false
     SA.enabled=false; KS.enabled=false; KA.on=false
@@ -2952,4 +2949,4 @@ ADDON.unload = function()
     print("[addon] unloaded")
 end
 
-print("[addon] v3 ready")
+print("[addon] v3.1 ready")
