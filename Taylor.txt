@@ -1,7 +1,7 @@
 --!nocheck
 --!nolint
 -- ============================================================
---  STARWARE v2 + SHAXED AIM + IMPROVED MENU
+--  STARWARE v2 + SHAXED AIM + WIDE MENU
 -- ============================================================
 if getgenv().UN_ADDON and getgenv().UN_ADDON.loaded then
     pcall(function() getgenv().UN_ADDON.unload() end)
@@ -288,7 +288,7 @@ end
 local function lead_time() if not EC.seen then return 0 end return math.clamp(EC.rtt,0,0.5) end
 
 -- ============================================================
--- SHAXED AIM — velocity history + wallbang spot + quiet peek
+-- SHAXED AIM
 -- ============================================================
 task.spawn(function()
     while ADDON.loaded do
@@ -386,7 +386,7 @@ local function SA_findQuietSpot(mRoot, myChar)
 end
 
 -- ============================================================
--- WEAPON HOOK (shaxed style)
+-- WEAPON HOOK
 -- ============================================================
 local WSH={}
 get_ws_fn=function()
@@ -1216,8 +1216,7 @@ local function clOrb()
     local c=LP.Character
     if c then
         local hrp=c:FindFirstChild("HumanoidRootPart")
-        if hrp then local f=hrp:FindFirstChild("sOrbs"); if f then f:Destroy() end end
-    end
+        if hrp then local f=hrp:FindFirstChild("sOrbs"); if f then f:Destroy() end end    end
 end
 local function mkGhost()
     if ghC then return end
@@ -1442,7 +1441,7 @@ end
 local function clJump() if jumpC then jumpC:Disconnect(); jumpC=nil end end
 
 -- ============================================================
--- KILL LIGHTNING + KILL HOOK
+-- KILL LIGHTNING
 -- ============================================================
 local function killLightning(pos)
     local bm=Instance.new("Part")
@@ -1537,7 +1536,7 @@ local function killAll()
 end
 
 -- ============================================================
--- MENU
+-- MENU  (520 x 340 — low and wide)
 -- ============================================================
 local function buildMenu()
     local sg = Instance.new("ScreenGui")
@@ -1551,7 +1550,7 @@ local function buildMenu()
     local main = Instance.new("Frame")
     main.Name = "Main"
     main.AnchorPoint = Vector2.new(0.5, 0.5)
-    main.Size = UDim2.new(0, 360, 0, 500)
+    main.Size = UDim2.new(0, 520, 0, 340)
     main.Position = UDim2.new(0.5, 0, 0.5, 0)
     main.BackgroundColor3 = BG
     main.BorderSizePixel = 0
@@ -1564,7 +1563,7 @@ local function buildMenu()
 
     local header = Instance.new("Frame")
     header.Name = "Header"
-    header.Size = UDim2.new(1, 0, 0, 46)
+    header.Size = UDim2.new(1, 0, 0, 42)
     header.BackgroundColor3 = BG2
     header.BorderSizePixel = 0
     header.Parent = main
@@ -1583,20 +1582,20 @@ local function buildMenu()
     local tGrad = Instance.new("UIGradient", title)
 
     local themeBtn = Instance.new("TextButton")
-    themeBtn.Size = UDim2.new(0, 34, 0, 34)
-    themeBtn.Position = UDim2.new(1, -120, 0.5, -17)
+    themeBtn.Size = UDim2.new(0, 32, 0, 32)
+    themeBtn.Position = UDim2.new(1, -116, 0.5, -16)
     themeBtn.BackgroundColor3 = BG3
     themeBtn.BorderSizePixel = 0
     themeBtn.Text = "🎨"
     themeBtn.Font = Enum.Font.GothamBold
-    themeBtn.TextSize = 16
+    themeBtn.TextSize = 15
     themeBtn.TextColor3 = A2
     themeBtn.Parent = header
     Instance.new("UICorner", themeBtn).CornerRadius = UDim.new(0, 8)
 
     local minBtn = Instance.new("TextButton")
-    minBtn.Size = UDim2.new(0, 34, 0, 34)
-    minBtn.Position = UDim2.new(1, -80, 0.5, -17)
+    minBtn.Size = UDim2.new(0, 32, 0, 32)
+    minBtn.Position = UDim2.new(1, -78, 0.5, -16)
     minBtn.BackgroundColor3 = BG3
     minBtn.BorderSizePixel = 0
     minBtn.Text = "—"
@@ -1607,27 +1606,25 @@ local function buildMenu()
     Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 8)
 
     local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 34, 0, 34)
-    closeBtn.Position = UDim2.new(1, -40, 0.5, -17)
+    closeBtn.Size = UDim2.new(0, 32, 0, 32)
+    closeBtn.Position = UDim2.new(1, -40, 0.5, -16)
     closeBtn.BackgroundColor3 = Color3.fromRGB(80,25,35)
     closeBtn.BorderSizePixel = 0
     closeBtn.Text = "X"
     closeBtn.Font = Enum.Font.GothamBlack
-    closeBtn.TextSize = 18
+    closeBtn.TextSize = 17
     closeBtn.TextColor3 = Color3.fromRGB(255,200,200)
     closeBtn.Parent = header
     Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
 
     local accent = Instance.new("Frame", main)
     accent.Size = UDim2.new(1, -24, 0, 1)
-    accent.Position = UDim2.new(0, 12, 0, 46)
+    accent.Position = UDim2.new(0, 12, 0, 42)
     accent.BackgroundColor3 = A
     accent.BorderSizePixel = 0
     local accentGrad = Instance.new("UIGradient", accent)
 
-    -- ============================================================
-    -- DRAG (header only, кнопки исключены)
-    -- ============================================================
+    -- DRAG
     do
         local dragging, dragStart, startPos
         local function inFrame(pos, frame)
@@ -1664,8 +1661,8 @@ local function buildMenu()
     end
 
     local tabBar = Instance.new("Frame")
-    tabBar.Size = UDim2.new(1, -16, 0, 40)
-    tabBar.Position = UDim2.new(0, 8, 0, 54)
+    tabBar.Size = UDim2.new(1, -16, 0, 38)
+    tabBar.Position = UDim2.new(0, 8, 0, 50)
     tabBar.BackgroundColor3 = BG2
     tabBar.BorderSizePixel = 0
     tabBar.Parent = main
@@ -1690,8 +1687,8 @@ local function buildMenu()
     tp.PaddingLeft = UDim.new(0, 8); tp.PaddingRight = UDim.new(0, 8)
 
     local content = Instance.new("Frame")
-    content.Size = UDim2.new(1, -16, 1, -152)
-    content.Position = UDim2.new(0, 8, 0, 102)
+    content.Size = UDim2.new(1, -16, 1, -100)
+    content.Position = UDim2.new(0, 8, 0, 94)
     content.BackgroundTransparency = 1
     content.BorderSizePixel = 0
     content.ClipsDescendants = true
@@ -1706,7 +1703,7 @@ local function buildMenu()
 
     local function section(parent, text)
         local f = Instance.new("Frame")
-        f.Size = UDim2.new(1, -8, 0, 26)
+        f.Size = UDim2.new(1, -8, 0, 24)
         f.BackgroundTransparency = 1
         f.Parent = parent
         local bar = Instance.new("Frame", f)
@@ -1729,7 +1726,7 @@ local function buildMenu()
 
     local function toggle(parent, text, getter, setter, onChange)
         local row = Instance.new("TextButton")
-        row.Size = UDim2.new(1, -8, 0, 42)
+        row.Size = UDim2.new(1, -8, 0, 38)
         row.BackgroundColor3 = BG3
         row.BorderSizePixel = 0
         row.AutoButtonColor = false
@@ -1788,7 +1785,7 @@ local function buildMenu()
 
     local function button(parent, text, cb)
         local b = Instance.new("TextButton")
-        b.Size = UDim2.new(1, -8, 0, 38)
+        b.Size = UDim2.new(1, -8, 0, 34)
         b.BackgroundColor3 = BG3
         b.BorderSizePixel = 0
         b.AutoButtonColor = false
@@ -1814,7 +1811,7 @@ local function buildMenu()
 
     local function slider(parent, text, minv, maxv, getter, setter, onChange)
         local f = Instance.new("Frame")
-        f.Size = UDim2.new(1, -8, 0, 56)
+        f.Size = UDim2.new(1, -8, 0, 52)
         f.BackgroundColor3 = BG3
         f.BorderSizePixel = 0
         f.Parent = parent
@@ -1832,7 +1829,7 @@ local function buildMenu()
         lbl.Parent = f
         local bar = Instance.new("Frame")
         bar.Size = UDim2.new(1, -24, 0, 12)
-        bar.Position = UDim2.new(0, 12, 0, 32)
+        bar.Position = UDim2.new(0, 12, 0, 30)
         bar.BackgroundColor3 = Color3.fromRGB(50,50,60)
         bar.BorderSizePixel = 0
         bar.Parent = f
@@ -1876,11 +1873,12 @@ local function buildMenu()
         return f, upd
     end
 
+    -- Tab layout — wide: две колонки в каждой странице
     local tabs = {}
     local currentBtn = nil
     local function addTab(name, order)
         local b = Instance.new("TextButton")
-        b.Size = UDim2.new(0, 90, 0, 30)
+        b.Size = UDim2.new(0, 74, 0, 30)
         b.BackgroundColor3 = BG3
         b.BorderSizePixel = 0
         b.AutoButtonColor = false
@@ -2435,4 +2433,4 @@ ADDON.unload = function()
     print("[addon] unloaded")
 end
 
-print("[addon] ready · shaxed aim · improved menu")
+print("[addon] ready · shaxed aim · wide menu 520x340")
