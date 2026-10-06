@@ -1,12 +1,164 @@
 -- ============================================================
--- mobile ui kit (touch-friendly)
+-- SHITARO STANDALONE v2
+-- aim + backtrack + tracer + self chams + self esp + player esp
+-- hardened: everything pcall'd, gui attach cascade, drawing optional
+-- no github, no external libs
+-- ============================================================
+
+-- ---------- diagnostics ----------
+local DIAG = {}
+local function diag(k, v) DIAG[k] = v end
+diag("Drawing", type(Drawing))
+diag("gethui", type(gethui))
+diag("CoreGui", type(CoreGui))
+diag("readfile", type(readfile))
+diag("isfile", type(isfile))
+diag("TouchEnabled", type(UserInputService) == "userdata" and UserInputService.TouchEnabled or "?")
+print("[SHITARO] diag:", (function()
+    local s = {}
+    for k, v in pairs(DIAG) do s[#s+1] = k.."="..tostring(v) end
+    return table.concat(s, " ")
+end)())
+
+if not LPH_OBFUSCATED then
+    local a = function() end
+    local g = getgenv and getgenv() or _G
+    g.LPH_ATTRIBUTES = a
+    g.ENCRYPT, g.VM, g.PRESET, g.OPTIMIZE, g.TRANSFORM, g.ERROR_HANDLING = a, a, a, a, a, a
+    g.UNROLL, g.INLINE, g.NO_UPVALUES = a, a, a
+    g.NONE, g.OPAL, g.ONYX, g.FAST, g.BALANCED, g.SECURE = a, a, a, a, a, a
+    g.EXTRACT, g.CONTROL_FLOW, g.REWRITE_NAMECALLS, g.GLOBALS, g.CONSTANTS = a, a, a, a, a
+end
+
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local UserInputService  = game:GetService("UserInputService")
+local Stats             = game:GetService("Stats")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService      = game:GetService("TweenService")
+local Debris            = game:GetService("Debris")
+local CoreGuiSvc        = game:GetService("CoreGui")
+
+local LP  = Players.LocalPlayer
+local CAM = workspace.CurrentCamera
+
+-- ============================================================
+-- gui attach cascade
+-- ============================================================
+local function attach_gui(gui)
+    if not gui then return nil end
+    local candidates = {}
+    if type(gethui) == "function" then
+        local ok, h = pcall(gethui)
+        if ok and h then candidates[#candidates+1] = h end
+    end
+    candidates[#candidates+1] = CoreGuiSvc
+    local pg = LP:FindFirstChildOfClass("PlayerGui")
+    if pg then candidates[#candidates+1] = pg end
+
+    for i = 1, #candidates do
+        local parent = candidates[i]
+        local ok = pcall(function() gui.Parent = parent end)
+        if ok and gui.Parent then return parent end
+    end
+    return nil
+end
+
+-- ============================================================
+-- config
+-- ============================================================
+local CONFIG = {
+    aim           = false,
+    predict       = true,
+    backtrack     = false,
+    bt_window     = 100,
+    auto          = false,
+    auto_delay    = 0,
+    tracer        = false,
+    tracer_col    = Color3.fromRGB(133, 220, 255),
+    tracer_dur    = 1.0,
+    self_chams    = false,
+    self_cham_type = "ForceField",
+    self_cham_col  = Color3.fromRGB(0, 200, 255),
+    self_esp      = false,
+    self_esp_col  = Color3.fromRGB(0, 200, 255),
+    esp_box       = false,
+    esp_box_col   = Color3.fromRGB(255, 60, 60),
+    esp_name      = false,
+    esp_name_col  = Color3.fromRGB(255, 255, 255),
+    esp_dist      = false,
+    esp_dist_col  = Color3.fromRGB(200, 200, 200),
+    esp_role_col_mur = Color3.fromRGB(255, 60, 60),
+    esp_role_col_shf = Color3.fromRGB(0, 153, 255),
+    esp_role_col_inn = Color3.fromRGB(200, 200, 200),
+    show_fov      = false,
+    fov_radius    = 120,
+}
+
+-- ============================================================
+-- notifications
+-- ============================================================
+function notification(text)
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "\0"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.DisplayOrder = 1000
+    if not attach_gui(gui) then return end
+
+    local frame = Instance.new("Frame")
+    frame.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
+    frame.BorderSizePixel = 0
+    frame.Size = UDim2.fromOffset(280, 50)
+    frame.Position = UDim2.new(1, -300, 0, 60)
+    frame.Parent = gui
+
+    local uc = Instance.new("UICorner")
+    uc.CornerRadius = UDim.new(0, 8)
+    uc.Parent = frame
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(0, 170, 255)
+    stroke.Thickness = 1.5
+    stroke.Parent = frame
+
+    local t = Instance.new("TextLabel")
+    t.BackgroundTransparency = 1
+    t.Size = UDim2.new(1, -20, 1, 0)
+    t.Position = UDim2.fromOffset(10, 0)
+    t.Font = Enum.Font.Gotham
+    t.Text = text
+    t.TextColor3 = Color3.fromRGB(230, 230, 240)
+    t.TextSize = 13
+    t.TextXAlignment = Enum.TextXAlignment.Left
+    t.TextWrapped = true
+    t.Parent = frame
+
+    pcall(function()
+        TweenService:Create(frame, TweenInfo.new(0.2), {
+            Position = UDim2.new(1, -300, 0, 70)
+        }):Play()
+    end)
+
+    task.delay(3, function()
+        pcall(function()
+            TweenService:Create(frame, TweenInfo.new(0.3), {
+                BackgroundTransparency = 1
+            }):Play()
+            TweenService:Create(t, TweenInfo.new(0.3), {
+                TextTransparency = 1
+            }):Play()
+        end)
+        task.wait(0.4)
+        pcall(function() gui:Destroy() end)
+    end)
+end
+
+-- ============================================================
+-- mobile ui kit
 -- ============================================================
 local UI = {}
 UI.__index = UI
-
-local function isTouch()
-    return UserInputService.TouchEnabled
-end
 
 function UI.new(title)
     local self = setmetatable({}, UI)
@@ -15,47 +167,43 @@ function UI.new(title)
     self.key = Enum.KeyCode.RightShift
     self.tabs = {}
     self.tab = nil
-    self.scroll = 0
-    self.mobile = isTouch()
+    self.mobile = UserInputService.TouchEnabled and true or false
 
-    -- размеры под мобилу
     if self.mobile then
         self.size = Vector2.new(340, 480)
-        self.tab_h = 60        -- высота таба (крупнее)
-        self.row_h = 56        -- высота toggle-строки
-        self.knob_w = 58       -- ширина switch
+        self.knob_w = 58
         self.knob_h = 32
     else
         self.size = Vector2.new(520, 400)
-        self.tab_h = 30
-        self.row_h = 28
         self.knob_w = 40
         self.knob_h = 20
     end
 
-    -- стартовая позиция
-    local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(800, 600)
+    local vp = CAM and CAM.ViewportSize or Vector2.new(800, 600)
     if self.mobile then
         self.pos = Vector2.new(math.max(10, (vp.X - self.size.X) / 2), 40)
     else
         self.pos = Vector2.new(60, 60)
     end
 
-    self.drag = nil
-    self:build()
+    self.ok, self.err = pcall(function() self:_build() end)
+    if not self.ok then
+        warn("[SHITARO] UI build failed:", self.err)
+    end
     return self
 end
 
-function UI:build()
+function UI:_build()
     self.frame = Instance.new("ScreenGui")
     self.frame.Name = "\0"
     self.frame.ResetOnSpawn = false
     self.frame.IgnoreGuiInset = true
     self.frame.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     self.frame.DisplayOrder = 999
-    pcall(function() self.frame.Parent = gethui and gethui() or CoreGui end)
+    if not attach_gui(self.frame) then
+        error("cannot attach ScreenGui to any parent")
+    end
 
-    -- WINDOW
     self.win = Instance.new("Frame")
     self.win.Name = "\0"
     self.win.BackgroundColor3 = Color3.fromRGB(16, 16, 18)
@@ -63,7 +211,6 @@ function UI:build()
     self.win.Position = UDim2.fromOffset(self.pos.X, self.pos.Y)
     self.win.Size = UDim2.fromOffset(self.size.X, self.size.Y)
     self.win.Active = true
-    self.win.Draggable = false
     self.win.Parent = self.frame
 
     local uc = Instance.new("UICorner")
@@ -75,12 +222,13 @@ function UI:build()
     stroke.Thickness = 1.5
     stroke.Parent = self.win
 
-    -- TITLE BAR
+    local titleH = self.mobile and 48 or 32
+
     self.title_bar = Instance.new("Frame")
     self.title_bar.Name = "TitleBar"
     self.title_bar.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
     self.title_bar.BorderSizePixel = 0
-    self.title_bar.Size = UDim2.new(1, 0, 0, self.mobile and 48 or 32)
+    self.title_bar.Size = UDim2.new(1, 0, 0, titleH)
     self.title_bar.Active = true
     self.title_bar.Parent = self.win
 
@@ -99,12 +247,11 @@ function UI:build()
     self.title_label.TextXAlignment = Enum.TextXAlignment.Left
     self.title_label.Parent = self.title_bar
 
-    -- close button (bigger on mobile)
     local closeSize = self.mobile and 44 or 28
     self.close_btn = Instance.new("TextButton")
     self.close_btn.BackgroundTransparency = 1
     self.close_btn.Size = UDim2.fromOffset(closeSize, closeSize)
-    self.close_btn.Position = UDim2.new(1, -closeSize - 4, 0, (self.title_bar.AbsoluteSize.Y - closeSize) / 2)
+    self.close_btn.Position = UDim2.new(1, -closeSize - 4, 0, (titleH - closeSize) / 2)
     self.close_btn.Font = Enum.Font.GothamBold
     self.close_btn.Text = "×"
     self.close_btn.TextColor3 = Color3.fromRGB(220, 220, 220)
@@ -114,12 +261,13 @@ function UI:build()
         self:toggle(false)
     end)
 
-    -- TAB STRIP
+    local tabW = 110
+
     self.tab_strip = Instance.new("Frame")
     self.tab_strip.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
     self.tab_strip.BorderSizePixel = 0
-    self.tab_strip.Size = UDim2.new(0, 110, 1, -(self.mobile and 48 or 32))
-    self.tab_strip.Position = UDim2.fromOffset(0, self.mobile and 48 or 32)
+    self.tab_strip.Size = UDim2.new(0, tabW, 1, -titleH)
+    self.tab_strip.Position = UDim2.fromOffset(0, titleH)
     self.tab_strip.Parent = self.win
 
     local tsl = Instance.new("UIListLayout")
@@ -133,18 +281,16 @@ function UI:build()
     tsp.PaddingRight = UDim.new(0, 6)
     tsp.Parent = self.tab_strip
 
-    -- BODY (scrolling frame, touch friendly)
     self.body = Instance.new("ScrollingFrame")
     self.body.BackgroundColor3 = Color3.fromRGB(16, 16, 18)
     self.body.BorderSizePixel = 0
-    self.body.Size = UDim2.new(1, -110, 1, -(self.mobile and 48 or 32))
-    self.body.Position = UDim2.fromOffset(110, self.mobile and 48 or 32)
+    self.body.Size = UDim2.new(1, -tabW, 1, -titleH)
+    self.body.Position = UDim2.fromOffset(tabW, titleH)
     self.body.ScrollBarThickness = self.mobile and 8 or 4
     self.body.ScrollBarImageColor3 = Color3.fromRGB(90, 90, 110)
     self.body.CanvasSize = UDim2.new(0, 0, 0, 0)
     self.body.AutomaticCanvasSize = Enum.AutomaticSize.Y
     self.body.ScrollingDirection = Enum.ScrollingDirection.Y
-    self.body.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
     self.body.Parent = self.win
 
     local bl = Instance.new("UIListLayout")
@@ -159,44 +305,35 @@ function UI:build()
     bp.PaddingBottom = UDim.new(0, 20)
     bp.Parent = self.body
 
-    -- DRAG (mouse + touch)
+    -- drag
     local dragStart, startPos
-
-    local function dragBegin(input)
+    self.title_bar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
             dragStart = Vector2.new(input.Position.X, input.Position.Y)
             startPos = self.win.Position
-            if self.mobile then
-                self.win.Size = UDim2.fromOffset(self.size.X, self.size.Y)
-            end
         end
-    end
-
-    local function dragMove(input)
+    end)
+    self.title_bar.InputChanged:Connect(function(input)
         if not dragStart then return end
-        if input.UserInputType ~= Enum.UserInputType.MouseMovement
-            and input.UserInputType ~= Enum.UserInputType.Touch then return end
-        local p = Vector2.new(input.Position.X, input.Position.Y)
-        local delta = p - dragStart
-        self.win.Position = UDim2.new(
-            startPos.X.Scale, startPos.X.Offset + delta.X,
-            startPos.Y.Scale, startPos.Y.Offset + delta.Y
-        )
-    end
-
-    local function dragEnd(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch then
+            local p = Vector2.new(input.Position.X, input.Position.Y)
+            local delta = p - dragStart
+            self.win.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+    self.title_bar.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
             dragStart = nil
         end
-    end
+    end)
 
-    self.title_bar.InputBegan:Connect(dragBegin)
-    self.title_bar.InputChanged:Connect(dragMove)
-    self.title_bar.InputEnded:Connect(dragEnd)
-
-    -- на мобиле — отдельная floating-кнопка открытия/закрытия
+    -- floating toggle button (mobile)
     if self.mobile then
         self.float_btn = Instance.new("TextButton")
         self.float_btn.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
@@ -207,7 +344,6 @@ function UI:build()
         self.float_btn.Text = "≡"
         self.float_btn.TextColor3 = Color3.fromRGB(255, 255, 255)
         self.float_btn.TextSize = 30
-        self.float_btn.AutoButtonColor = true
         self.float_btn.Parent = self.frame
         local fuc = Instance.new("UICorner")
         fuc.CornerRadius = UDim.new(1, 0)
@@ -217,21 +353,20 @@ function UI:build()
             self:toggle(not self.enabled)
         end)
 
-        -- floating btn draggable
-        local fbDragStart, fbStart
+        local fbDrag, fbStart
         self.float_btn.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.Touch
                 or input.UserInputType == Enum.UserInputType.MouseButton1 then
-                fbDragStart = Vector2.new(input.Position.X, input.Position.Y)
+                fbDrag = Vector2.new(input.Position.X, input.Position.Y)
                 fbStart = self.float_btn.Position
             end
         end)
         self.float_btn.InputChanged:Connect(function(input)
-            if not fbDragStart then return end
+            if not fbDrag then return end
             if input.UserInputType == Enum.UserInputType.Touch
                 or input.UserInputType == Enum.UserInputType.MouseMovement then
                 local p = Vector2.new(input.Position.X, input.Position.Y)
-                local d = p - fbDragStart
+                local d = p - fbDrag
                 self.float_btn.Position = UDim2.new(
                     fbStart.X.Scale, fbStart.X.Offset + d.X,
                     fbStart.Y.Scale, fbStart.Y.Offset + d.Y
@@ -241,12 +376,11 @@ function UI:build()
         self.float_btn.InputEnded:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.Touch
                 or input.UserInputType == Enum.UserInputType.MouseButton1 then
-                fbDragStart = nil
+                fbDrag = nil
             end
         end)
     end
 
-    -- keyboard shortcut (all platforms)
     UserInputService.InputBegan:Connect(function(input, gp)
         if gp then return end
         if input.KeyCode == self.key then
@@ -254,17 +388,18 @@ function UI:build()
         end
     end)
 
-    -- default: open
     self.win.Visible = true
 end
 
 function UI:toggle(state)
+    if not self.win then return end
     self.enabled = state and true or not self.enabled
     self.win.Visible = self.enabled
 end
 
 function UI:addTab(name)
-    local tab = { name = name, items = {}, btn = nil, page = nil }
+    if not self.ok or not self.tab_strip then return nil end
+    local tab = { name = name, btn = nil, page = nil }
     local btnH = self.mobile and 44 or 28
 
     local btn = Instance.new("TextButton")
@@ -276,7 +411,6 @@ function UI:addTab(name)
     btn.TextColor3 = Color3.fromRGB(200, 200, 210)
     btn.TextSize = self.mobile and 15 or 13
     btn.TextXAlignment = Enum.TextXAlignment.Center
-    btn.AutoButtonColor = true
     btn.Parent = self.tab_strip
 
     local buc = Instance.new("UICorner")
@@ -333,9 +467,11 @@ function UI:_buildPage(tab)
         sec.Size = UDim2.new(1, 0, 0, 0)
         sec.AutomaticSize = Enum.AutomaticSize.Y
         sec.Parent = page
+
         local suc = Instance.new("UICorner")
         suc.CornerRadius = UDim.new(0, 8)
         suc.Parent = sec
+
         local pad = Instance.new("UIPadding")
         pad.PaddingLeft = UDim.new(0, 12)
         pad.PaddingRight = UDim.new(0, 12)
@@ -357,18 +493,22 @@ function UI:_buildPage(tab)
         ll2.Padding = UDim.new(0, 8)
         ll2.SortOrder = Enum.SortOrder.LayoutOrder
         ll2.Parent = sec
+
         local pad2 = Instance.new("UIPadding")
         pad2.PaddingTop = UDim.new(0, 22)
         pad2.Parent = sec
+
         return sec
     end
 
     return { Visible = false, Frame = page, NewSection = newSection }
 end
 
-function UI:addToggle(tab, section, name, default, cb, flag)
+function UI:addToggle(tab, section, name, default, cb)
+    if not self.ok or not tab or not tab.page then return end
     local container = section or tab.page.Frame
     local rowH = self.mobile and 48 or 28
+
     local row = Instance.new("Frame")
     row.BackgroundTransparency = 1
     row.Size = UDim2.new(1, 0, 0, rowH)
@@ -404,6 +544,7 @@ function UI:addToggle(tab, section, name, default, cb, flag)
     knob.Size = UDim2.fromOffset(knobD, knobD)
     knob.Position = default and UDim2.new(1, -knobD - 3, 0.5, -knobD / 2) or UDim2.fromOffset(3, 3)
     knob.Parent = btn
+
     local kuc = Instance.new("UICorner")
     kuc.CornerRadius = UDim.new(1, 0)
     kuc.Parent = knob
@@ -422,13 +563,13 @@ function UI:addToggle(tab, section, name, default, cb, flag)
             if not ok then warn("[SHITARO UI] toggle cb:", err) end
         end
     end)
-
-    return { value = function() return state end, set = function(v) state = v and true or false; paint() end }
 end
 
 function UI:addSlider(tab, section, name, default, min, max, round, cb, suffix)
+    if not self.ok or not tab or not tab.page then return end
     local container = section or tab.page.Frame
     local rowH = self.mobile and 68 or 42
+
     local row = Instance.new("Frame")
     row.BackgroundTransparency = 1
     row.Size = UDim2.new(1, 0, 0, rowH)
@@ -474,6 +615,7 @@ function UI:addSlider(tab, section, name, default, min, max, round, cb, suffix)
     fill.BorderSizePixel = 0
     fill.Size = UDim2.fromScale((default - min) / (max - min), 1)
     fill.Parent = bar
+
     local fuc = Instance.new("UICorner")
     fuc.CornerRadius = UDim.new(1, 0)
     fuc.Parent = fill
@@ -499,7 +641,6 @@ function UI:addSlider(tab, section, name, default, min, max, round, cb, suffix)
         end
     end
 
-    -- bigger hit area for touch: use row InputBegan
     local hitArea = Instance.new("TextButton")
     hitArea.BackgroundTransparency = 1
     hitArea.Text = ""
@@ -529,8 +670,10 @@ function UI:addSlider(tab, section, name, default, min, max, round, cb, suffix)
 end
 
 function UI:addColor(tab, section, name, default, cb)
+    if not self.ok or not tab or not tab.page then return end
     local container = section or tab.page.Frame
     local rowH = self.mobile and 48 or 28
+
     local row = Instance.new("Frame")
     row.BackgroundTransparency = 1
     row.Size = UDim2.new(1, 0, 0, rowH)
@@ -568,7 +711,6 @@ function UI:addColor(tab, section, name, default, cb)
         if cb then pcall(cb, Color3.fromHSV(h, s, v)) end
     end
 
-    -- left tap = shift hue, right tap = cycle sat
     swatch.MouseButton1Click:Connect(function()
         h = (h + 0.06) % 1
         paint()
@@ -577,13 +719,891 @@ function UI:addColor(tab, section, name, default, cb)
         s = s > 0.6 and 0.4 or 1
         paint()
     end)
-
-    return {
-        set = function(c)
-            h, s, v = Color3.toHSV(c)
-            paint()
-        end
-    }
 end
 
--- маленький helper для мобильного — большая кнопка "open menu" в углу если закрыли
+-- ============================================================
+-- round data
+-- ============================================================
+local round_mod = nil
+local function get_round()
+    if round_mod then return round_mod end
+    local ok, m = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Modules", 3):WaitForChild("CurrentRoundClient", 3))
+    end)
+    if ok and type(m) == "table" then round_mod = m end
+    return round_mod
+end
+
+local function my_role()
+    local m = get_round()
+    local d = m and m.PlayerData
+    local me = d and d[LP.Name]
+    if me then
+        if me.Role == "Sheriff" or me.Role == "Hero" then return "Sheriff" end
+        if me.Role == "Murderer" then return "Murderer" end
+        if me.Role == "Innocent" then return "Innocent" end
+    end
+    local c = LP.Character
+    if c and c:FindFirstChild("Gun") then return "Sheriff" end
+    if c and c:FindFirstChild("Knife") then return "Murderer" end
+    local bp = LP:FindFirstChildOfClass("Backpack")
+    if bp and bp:FindFirstChild("Gun") then return "Sheriff" end
+    if bp and bp:FindFirstChild("Knife") then return "Murderer" end
+    return nil
+end
+
+local function target_role(plr)
+    local m = get_round()
+    local d = m and m.PlayerData
+    local t = d and d[plr.Name]
+    if t then
+        if t.Role == "Sheriff" or t.Role == "Hero" then return "Sheriff" end
+        if t.Role == "Murderer" then return "Murderer" end
+        if t.Role == "Innocent" then return "Innocent" end
+    end
+    local c = plr.Character
+    if c and c:FindFirstChild("Gun") then return "Sheriff" end
+    if c and c:FindFirstChild("Knife") then return "Murderer" end
+    return nil
+end
+
+-- ============================================================
+-- backtrack
+-- ============================================================
+local BT = { hist = {}, keep = 2.0 }
+
+local function bt_track()
+    local now = os.clock()
+    local cutoff = now - BT.keep
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LP then continue end
+        local char = plr.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hrp and hum and hum.Health > 0 then
+            local h = BT.hist[plr.Name]
+            if not h then h = {}; BT.hist[plr.Name] = h end
+            h[#h + 1] = { t = now, pos = hrp.Position }
+            local i = 1
+            while i <= #h and h[i].t < cutoff do i = i + 1 end
+            if i > 1 then
+                for j = 1, #h - (i - 1) do h[j] = h[j + i - 1] end
+                for j = #h - (i - 1) + 1, #h do h[j] = nil end
+            end
+        end
+    end
+    for name in pairs(BT.hist) do
+        if not Players:FindFirstChild(name) then BT.hist[name] = nil end
+    end
+end
+
+local function bt_get(name, ms_back)
+    local h = BT.hist[name]
+    if not h or #h == 0 then return nil end
+    local target = os.clock() - (ms_back / 1000)
+    local best, best_d = h[1], math.huge
+    for i = 1, #h do
+        local d = math.abs(h[i].t - target)
+        if d < best_d then best, best_d = h[i], d end
+    end
+    return best and best.pos or nil
+end
+
+-- ============================================================
+-- target
+-- ============================================================
+local target_player = nil
+local target_char = nil
+local target_part = nil
+local target_hum = nil
+
+local function holds(c, n) return c ~= nil and c:FindFirstChild(n) ~= nil end
+
+local function refresh_target()
+    local found = nil
+    local m = get_round()
+    local data = m and m.PlayerData
+    if type(data) == "table" then
+        for name, d in pairs(data) do
+            if type(d) == "table" and d.Role == "Murderer" and not d.Dead then
+                found = Players:FindFirstChild(name)
+                if found then break end
+            end
+        end
+    end
+    if not found then
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LP and holds(plr.Character, "Knife") then
+                found = plr
+                break
+            end
+        end
+    end
+    if not found then
+        local mychar = LP.Character
+        local myhrp = mychar and mychar:FindFirstChild("HumanoidRootPart")
+        if myhrp then
+            local best, bestd = nil, math.huge
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LP and plr.Character then
+                    local h = plr.Character:FindFirstChild("HumanoidRootPart")
+                    local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+                    if h and hum and hum.Health > 0 then
+                        local d = (h.Position - myhrp.Position).Magnitude
+                        if d < bestd then best, bestd = plr, d end
+                    end
+                end
+            end
+            found = best
+        end
+    end
+
+    if found ~= target_player then
+        target_player = found
+        target_char = nil
+        target_part = nil
+        target_hum = nil
+    end
+    if not found then return end
+    local char = found.Character
+    if char ~= target_char then
+        target_char = char
+        target_part = nil
+        target_hum = nil
+    end
+    if not char then return end
+    if not target_part or not target_part.Parent then
+        target_part = char:FindFirstChild("HumanoidRootPart")
+            or char:FindFirstChild("UpperTorso")
+            or char:FindFirstChild("Torso")
+    end
+    if not target_hum or not target_hum.Parent then
+        target_hum = char:FindFirstChildOfClass("Humanoid")
+    end
+end
+
+local function target_alive()
+    if not target_part or not target_part.Parent then return false end
+    if not target_hum or not target_hum.Parent then return false end
+    return target_hum.Health > 0
+end
+
+-- ============================================================
+-- motion tracking
+-- ============================================================
+local SNAP = { n = 48, i = 0, count = 0, t = {}, p = {}, last_pos = nil, last_time = 0, vel = Vector3.zero }
+for i = 1, SNAP.n do SNAP.t[i] = 0; SNAP.p[i] = Vector3.zero end
+
+local function snap_push(now, pos)
+    SNAP.i = SNAP.i % SNAP.n + 1
+    SNAP.t[SNAP.i] = now
+    SNAP.p[SNAP.i] = pos
+    if SNAP.count < SNAP.n then SNAP.count = SNAP.count + 1 end
+end
+
+local function snap_get(k)
+    local idx = (SNAP.i - k - 1) % SNAP.n + 1
+    return SNAP.t[idx], SNAP.p[idx]
+end
+
+local function fit_velocity()
+    if SNAP.count < 3 then return nil end
+    local newest = snap_get(0)
+    local used, sum_d = 0, 0
+    for k = 0, SNAP.count - 1 do
+        local t = snap_get(k)
+        if newest - t > 0.4 then break end
+        used = used + 1
+        sum_d = sum_d + (t - newest)
+    end
+    if used < 3 then return nil end
+    local mean_d = sum_d / used
+    local num = Vector3.zero
+    local den = 0
+    for k = 0, used - 1 do
+        local t, p = snap_get(k)
+        local d = (t - newest) - mean_d
+        num = num + p * d
+        den = den + d * d
+    end
+    if den < 1e-8 then return nil end
+    return num / den
+end
+
+local function recent_velocity()
+    if SNAP.count < 2 then return nil end
+    local newest, head = snap_get(0)
+    local best = nil
+    for k = 1, SNAP.count - 1 do
+        local t, p = snap_get(k)
+        local dt = newest - t
+        if dt > 0.35 then break end
+        best = (head - p) / dt
+    end
+    return best
+end
+
+local function track_motion(now)
+    if not target_part or not target_part.Parent then
+        SNAP.count = 0
+        SNAP.i = 0
+        SNAP.last_pos = nil
+        return
+    end
+    local pos = target_part.Position
+    if not SNAP.last_pos then
+        SNAP.last_pos = pos
+        SNAP.last_time = now
+        snap_push(now, pos)
+        return
+    end
+    if now - SNAP.last_time < 0.005 then return end
+    SNAP.last_time = now
+    SNAP.last_pos = pos
+    snap_push(now, pos)
+
+    local fit = fit_velocity()
+    local fast = recent_velocity()
+    if fit and fast then
+        local sf = Vector3.new(fit.X, 0, fit.Z).Magnitude
+        local ss = Vector3.new(fast.X, 0, fast.Z).Magnitude
+        if sf > 200 or sf ~= sf then fit = nil end
+        if ss > 200 or ss ~= ss then fast = nil end
+    end
+    if fit and fast then
+        SNAP.vel = Vector3.new(fast.X * 0.7 + fit.X * 0.3, fast.Y, fast.Z * 0.7 + fit.Z * 0.3)
+    elseif fast then
+        SNAP.vel = fast
+    elseif fit then
+        SNAP.vel = fit
+    end
+    local h = Vector3.new(SNAP.vel.X, 0, SNAP.vel.Z)
+    if h.Magnitude > 120 then
+        SNAP.vel = Vector3.new(SNAP.vel.X * 0.4, SNAP.vel.Y, SNAP.vel.Z * 0.4)
+    end
+end
+
+local function clear_motion()
+    SNAP.count = 0; SNAP.i = 0
+    SNAP.last_pos = nil; SNAP.last_time = 0
+    SNAP.vel = Vector3.zero
+end
+
+-- ============================================================
+-- ping
+-- ============================================================
+local PING = { seen = false, rtt = 0 }
+local function sample_ping()
+    local ok, ms = pcall(function()
+        return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+    end)
+    if ok and type(ms) == "number" and ms == ms and ms > 0 then
+        local s = math.clamp(ms / 1000, 0, 1)
+        if PING.seen then PING.rtt = PING.rtt * 0.85 + s * 0.15
+        else PING.rtt = s; PING.seen = true end
+    end
+end
+
+local function lead_time()
+    if not PING.seen then return 0 end
+    return math.clamp(PING.rtt, 0, 0.5)
+end
+
+-- ============================================================
+-- aim
+-- ============================================================
+local HIT_NAMES = {
+    "HumanoidRootPart", "UpperTorso", "Torso", "LowerTorso", "Head",
+    "RightUpperArm", "LeftUpperArm", "RightUpperLeg", "LeftUpperLeg",
+}
+
+local function aim_point()
+    if not target_char or not target_char.Parent then return nil end
+    if not target_hum or target_hum.Health <= 0 then return nil end
+
+    if CONFIG.backtrack then
+        local btpos = bt_get(target_player and target_player.Name or "", CONFIG.bt_window)
+        if btpos then return btpos end
+    end
+
+    local part = target_part
+    if not part then
+        for _, n in ipairs(HIT_NAMES) do
+            local p = target_char:FindFirstChild(n)
+            if p then part = p; break end
+        end
+    end
+    if not part then return nil end
+
+    local base = part.Position
+    if not CONFIG.predict then return base end
+    local t = lead_time()
+    if t <= 0 then return base end
+    local v = SNAP.vel
+    local x = base.X + v.X * t
+    local z = base.Z + v.Z * t
+    local y = base.Y
+    if math.abs(v.Y) > 1 then
+        y = base.Y + v.Y * t - 0.5 * workspace.Gravity * t * t
+    end
+    return Vector3.new(x, y, z)
+end
+
+-- ============================================================
+-- weapon service hook
+-- ============================================================
+local weapon_svc = nil
+local orig_mouse, orig_screen = nil, nil
+
+local function get_weapon_svc()
+    if weapon_svc then return weapon_svc end
+    local ok, m = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("ClientServices", 3):WaitForChild("WeaponService", 3))
+    end)
+    if ok and type(m) == "table" then weapon_svc = m end
+    return weapon_svc
+end
+
+local function install_hooks()
+    local m = get_weapon_svc()
+    if not m then return end
+    pcall(function() setreadonly(m, false) end)
+
+    if type(m.GetMouseTargetCFrame) == "function" and not orig_mouse then
+        orig_mouse = m.GetMouseTargetCFrame
+        pcall(function()
+            m.GetMouseTargetCFrame = function(self, ...)
+                if CONFIG.aim and CONFIG.auto then
+                    local p = aim_point()
+                    if p then return CFrame.new(p) end
+                end
+                return orig_mouse(self, ...)
+            end
+        end)
+    end
+    if type(m.GetTargetPosition) == "function" and not orig_screen then
+        orig_screen = m.GetTargetPosition
+        pcall(function()
+            m.GetTargetPosition = function(self, x, y, ...)
+                if CONFIG.aim then
+                    local p = aim_point()
+                    if p then return CFrame.new(p) end
+                end
+                return orig_screen(self, x, y, ...)
+            end
+        end)
+    end
+end
+
+-- ============================================================
+-- auto shoot
+-- ============================================================
+local function get_gun()
+    local c = LP.Character
+    if c then local g = c:FindFirstChild("Gun"); if g then return g, true end end
+    local bp = LP:FindFirstChildOfClass("Backpack")
+    if bp then local g = bp:FindFirstChild("Gun"); if g then return g, false end end
+end
+
+local last_shot = 0
+local function auto_fire(now)
+    if not CONFIG.auto or not CONFIG.aim or not target_alive() then return end
+    if my_role() ~= "Sheriff" then return end
+    local gun, eq = get_gun()
+    if not gun then return end
+    if not eq then
+        local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+        if hum then pcall(function() hum:EquipTool(gun) end) end
+        return
+    end
+    local delay = math.max(CONFIG.auto_delay, 0.05)
+    if now - last_shot < delay then return end
+    local p = aim_point()
+    if not p then return end
+    local remote = gun:FindFirstChild("Shoot")
+    if remote and remote:IsA("RemoteEvent") then
+        local c = LP.Character
+        local hrp = c and c:FindFirstChild("HumanoidRootPart")
+        local att = hrp and hrp:FindFirstChild("GunRaycastAttachment")
+        local oc = att and att.WorldCFrame or (hrp and hrp.CFrame)
+        if oc then
+            pcall(function() remote:FireServer(oc, CFrame.new(p)) end)
+            last_shot = now
+        end
+    end
+end
+
+-- ============================================================
+-- tracer
+-- ============================================================
+local tracer_conn = nil
+local tracer_remote = nil
+
+local function to_pos(v)
+    if typeof(v) == "Vector3" then return v end
+    if typeof(v) == "CFrame" then return v.Position end
+    if typeof(v) == "Instance" then
+        if v:IsA("Attachment") then return v.WorldPosition end
+        if v:IsA("BasePart") then return v.Position end
+    end
+end
+
+local function make_tracer(a, b)
+    local dur = CONFIG.tracer_dur
+    local pa = Instance.new("Part")
+    pa.Transparency = 1
+    pa.Anchored = true
+    pa.CanCollide = false
+    pa.CanQuery = false
+    pa.Size = Vector3.new(1,1,1)
+    pa.CFrame = CFrame.new(a)
+    Instance.new("Attachment", pa)
+    pa.Parent = workspace
+
+    local pb = Instance.new("Part")
+    pb.Transparency = 1
+    pb.Anchored = true
+    pb.CanCollide = false
+    pb.CanQuery = false
+    pb.Size = Vector3.new(1,1,1)
+    pb.CFrame = CFrame.new(b)
+    Instance.new("Attachment", pb)
+    pb.Parent = workspace
+
+    local beam = Instance.new("Beam")
+    beam.FaceCamera = true
+    beam.TextureSpeed = 1.5
+    beam.TextureLength = 2
+    beam.Width0 = 0.25
+    beam.Width1 = 0.25
+    beam.LightEmission = 3
+    beam.LightInfluence = 0
+    beam.Brightness = 2.5
+    beam.Texture = "rbxassetid://12781800668"
+    beam.Color = ColorSequence.new(CONFIG.tracer_col)
+    beam.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.1),
+        NumberSequenceKeypoint.new(1, 0.1)
+    })
+    beam.Attachment0 = pa.Attachment
+    beam.Attachment1 = pb.Attachment
+    beam.Parent = pa
+
+    task.delay(dur, function()
+        pcall(function()
+            if beam.Parent then
+                TweenService:Create(beam, TweenInfo.new(0.2, Enum.EasingStyle.Linear), {
+                    Width0 = 0, Width1 = 0
+                }):Play()
+            end
+        end)
+    end)
+    Debris:AddItem(pa, dur + 0.5)
+    Debris:AddItem(pb, dur + 0.5)
+end
+
+local function connect_tracer()
+    if tracer_remote and tracer_conn and tracer_conn.Connected then return end
+    local ok, remote = pcall(function()
+        return ReplicatedStorage:WaitForChild("ClientServices", 3):WaitForChild("WeaponService", 3):WaitForChild("GunFired", 3)
+    end)
+    if not ok or not remote then return end
+    if tracer_conn then pcall(function() tracer_conn:Disconnect() end) end
+    tracer_remote = remote
+    tracer_conn = remote.OnClientEvent:Connect(function(gun, a, b)
+        if not CONFIG.tracer then return end
+        local c = LP.Character
+        if typeof(gun) == "Instance" and c and gun:IsDescendantOf(c) then
+            local pa, pb = to_pos(a), to_pos(b)
+            if pa and pb then task.spawn(make_tracer, pa, pb) end
+        end
+    end)
+end
+
+-- ============================================================
+-- self chams
+-- ============================================================
+local self_chams_backup = {}
+local self_hl = nil
+
+local function self_chams_apply()
+    local c = LP.Character
+    if not c then return end
+    local mode = CONFIG.self_cham_type
+    if mode == "Highlight" then
+        if not self_hl or self_hl.Parent ~= c then
+            if self_hl then self_hl:Destroy() end
+            self_hl = Instance.new("Highlight")
+            self_hl.Name = "ShitaroSelfHL"
+            self_hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            self_hl.FillTransparency = 0.5
+            self_hl.OutlineTransparency = 0
+            self_hl.Adornee = c
+            self_hl.Parent = c
+        end
+        self_hl.FillColor = CONFIG.self_cham_col
+        self_hl.OutlineColor = CONFIG.self_cham_col
+        self_hl.Enabled = true
+    else
+        if self_hl then self_hl:Destroy() self_hl = nil end
+        for _, d in ipairs(c:GetDescendants()) do
+            if d:IsA("BasePart") and d.Name ~= "HumanoidRootPart" then
+                if self_chams_backup[d] == nil then
+                    self_chams_backup[d] = { d.Material, d.Color, d.Transparency }
+                end
+                if mode == "ForceField" then
+                    d.Material = Enum.Material.ForceField
+                    d.Color = CONFIG.self_cham_col
+                elseif mode == "Neon" then
+                    d.Material = Enum.Material.Neon
+                    d.Color = CONFIG.self_cham_col
+                elseif mode == "Flat" then
+                    d.Material = Enum.Material.SmoothPlastic
+                    d.Color = CONFIG.self_cham_col
+                elseif mode == "Glass" then
+                    d.Material = Enum.Material.Glass
+                    d.Transparency = 0.5
+                    d.Color = CONFIG.self_cham_col
+                end
+            end
+        end
+    end
+end
+
+local function self_chams_restore()
+    for p, d in pairs(self_chams_backup) do
+        if p and p.Parent then
+            pcall(function()
+                p.Material = d[1]
+                p.Color = d[2]
+                p.Transparency = d[3]
+            end)
+        end
+    end
+    self_chams_backup = {}
+    if self_hl then self_hl:Destroy() self_hl = nil end
+end
+
+-- ============================================================
+-- self esp
+-- ============================================================
+local self_esp_hl = nil
+local function self_esp_update()
+    if not CONFIG.self_esp then
+        if self_esp_hl then
+            self_esp_hl.Enabled = false
+            self_esp_hl:Destroy()
+            self_esp_hl = nil
+        end
+        return
+    end
+    local c = LP.Character
+    if not c then return end
+    if not self_esp_hl or self_esp_hl.Parent ~= c then
+        if self_esp_hl then self_esp_hl:Destroy() end
+        self_esp_hl = Instance.new("Highlight")
+        self_esp_hl.Name = "ShitaroSelfESP"
+        self_esp_hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        self_esp_hl.OutlineTransparency = 0
+        self_esp_hl.FillTransparency = 0.6
+        self_esp_hl.Adornee = c
+        self_esp_hl.Parent = c
+    end
+    self_esp_hl.FillColor = CONFIG.self_esp_col
+    self_esp_hl.OutlineColor = CONFIG.self_esp_col
+    self_esp_hl.Enabled = true
+end
+
+-- ============================================================
+-- player esp (Drawing — optional)
+-- ============================================================
+local HAS_DRAWING = false
+do
+    local ok, d = pcall(function() return Drawing.new("Square") end)
+    if ok and d then
+        HAS_DRAWING = true
+        pcall(function() d:Remove() end)
+    end
+end
+
+local esp_cache = {}
+
+local function make_esp(plr)
+    if esp_cache[plr] then return esp_cache[plr] end
+    if not HAS_DRAWING then return nil end
+    local e = {
+        box = Drawing.new("Square"),
+        name = Drawing.new("Text"),
+        dist = Drawing.new("Text"),
+    }
+    e.box.Thickness = 1
+    e.box.Filled = false
+    e.box.Transparency = 1
+    e.box.Visible = false
+    e.name.Center = true
+    e.name.Outline = true
+    e.name.Size = 13
+    e.name.Font = Drawing.Fonts.UI
+    e.name.Visible = false
+    e.dist.Center = true
+    e.dist.Outline = true
+    e.dist.Size = 12
+    e.dist.Font = Drawing.Fonts.UI
+    e.dist.Visible = false
+    esp_cache[plr] = e
+    return e
+end
+
+local function role_color(plr)
+    local r = target_role(plr)
+    if r == "Murderer" then return CONFIG.esp_role_col_mur end
+    if r == "Sheriff" then return CONFIG.esp_role_col_shf end
+    return CONFIG.esp_role_col_inn
+end
+
+local function esp_update()
+    if not HAS_DRAWING then return end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LP then continue end
+        local char = plr.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local e = esp_cache[plr]
+        if char and hrp and hum and hum.Health > 0 and (CONFIG.esp_box or CONFIG.esp_name or CONFIG.esp_dist) then
+            if not e then e = make_esp(plr) end
+            if e then
+                local top = CAM:WorldToViewportPoint(hrp.Position + Vector3.new(0, 3, 0))
+                local bot = CAM:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0))
+                if top.Z > 0 and bot.Z > 0 then
+                    local h = math.abs(top.Y - bot.Y)
+                    local w = h * 0.55
+                    local boxX = bot.X - w / 2
+                    local boxY = top.Y
+
+                    if CONFIG.esp_box then
+                        e.box.Color = role_color(plr)
+                        e.box.Position = Vector2.new(boxX, boxY)
+                        e.box.Size = Vector2.new(w, h)
+                        e.box.Visible = true
+                    else
+                        e.box.Visible = false
+                    end
+
+                    if CONFIG.esp_name then
+                        e.name.Color = CONFIG.esp_name_col
+                        e.name.Text = plr.DisplayName
+                        e.name.Position = Vector2.new(bot.X, boxY - 16)
+                        e.name.Visible = true
+                    else
+                        e.name.Visible = false
+                    end
+
+                    if CONFIG.esp_dist then
+                        local myhrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+                        local d = myhrp and (hrp.Position - myhrp.Position).Magnitude or 0
+                        e.dist.Color = CONFIG.esp_dist_col
+                        e.dist.Text = string.format("[%d]", math.floor(d + 0.5))
+                        e.dist.Position = Vector2.new(bot.X, bot.Y + 2)
+                        e.dist.Visible = true
+                    else
+                        e.dist.Visible = false
+                    end
+                else
+                    e.box.Visible = false
+                    e.name.Visible = false
+                    e.dist.Visible = false
+                end
+            end
+        else
+            if e then
+                e.box.Visible = false
+                e.name.Visible = false
+                e.dist.Visible = false
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- fov circle (optional)
+-- ============================================================
+local fov_circle = nil
+if HAS_DRAWING then
+    local ok, c = pcall(function() return Drawing.new("Circle") end)
+    if ok and c then
+        fov_circle = c
+        fov_circle.Thickness = 1
+        fov_circle.NumSides = 64
+        fov_circle.Filled = false
+        fov_circle.Color = Color3.fromRGB(255, 255, 255)
+        fov_circle.Transparency = 0.5
+        fov_circle.Visible = false
+    end
+end
+
+-- ============================================================
+-- loops
+-- ============================================================
+local hb = RunService.Heartbeat:Connect(function()
+    pcall(function()
+        local now = os.clock()
+        sample_ping()
+        bt_track()
+        refresh_target()
+        track_motion(now)
+        auto_fire(now)
+    end)
+end)
+
+local render_conn = RunService.RenderStepped:Connect(function()
+    pcall(function()
+        esp_update()
+        self_esp_update()
+        if fov_circle then
+            if CONFIG.show_fov then
+                local mouse = UserInputService:GetMouseLocation()
+                fov_circle.Position = Vector2.new(mouse.X, mouse.Y + 36)
+                fov_circle.Radius = CONFIG.fov_radius
+                fov_circle.Visible = true
+            else
+                fov_circle.Visible = false
+            end
+        end
+    end)
+end)
+
+LP.CharacterAdded:Connect(function()
+    task.wait(0.3)
+    clear_motion()
+    self_chams_restore()
+    if CONFIG.self_chams then self_chams_apply() end
+    if CONFIG.self_esp then self_esp_update() end
+end)
+
+task.spawn(function()
+    while true do
+        pcall(install_hooks)
+        pcall(connect_tracer)
+        task.wait(1)
+    end
+end)
+
+-- ============================================================
+-- menu
+-- ============================================================
+local MENU = UI.new("SHITARO")
+
+if MENU.ok then
+    local aim_tab = MENU:addTab("aim")
+    if aim_tab then
+        local aim_sec = aim_tab.page.NewSection("aimbot")
+
+        MENU:addToggle(aim_tab, aim_sec, "enable aim", false, function(v) CONFIG.aim = v end)
+        MENU:addToggle(aim_tab, aim_sec, "prediction", true, function(v) CONFIG.predict = v end)
+        MENU:addToggle(aim_tab, aim_sec, "backtrack", false, function(v) CONFIG.backtrack = v end)
+        MENU:addSlider(aim_tab, aim_sec, "backtrack window", 100, 20, 250, 0, function(v) CONFIG.bt_window = v end, "ms")
+        MENU:addToggle(aim_tab, aim_sec, "auto shoot", false, function(v) CONFIG.auto = v end)
+        MENU:addSlider(aim_tab, aim_sec, "auto delay", 0, 0, 500, 0, function(v) CONFIG.auto_delay = v / 1000 end, "ms")
+        MENU:addToggle(aim_tab, aim_sec, "show fov", false, function(v) CONFIG.show_fov = v end)
+        MENU:addSlider(aim_tab, aim_sec, "fov radius", 120, 20, 500, 0, function(v) CONFIG.fov_radius = v end, "px")
+    end
+
+    local tr_tab = MENU:addTab("tracer")
+    if tr_tab then
+        local tr_sec = tr_tab.page.NewSection("bullet tracer")
+        MENU:addToggle(tr_tab, tr_sec, "enable tracer", false, function(v)
+            CONFIG.tracer = v
+            if v then connect_tracer() end
+        end)
+        MENU:addColor(tr_tab, tr_sec, "color", CONFIG.tracer_col, function(c) CONFIG.tracer_col = c end)
+        MENU:addSlider(tr_tab, tr_sec, "duration", 1.0, 0.1, 5.0, 1, function(v) CONFIG.tracer_dur = v end, "s")
+    end
+
+    local ch_tab = MENU:addTab("chams")
+    if ch_tab then
+        local ch_sec = ch_tab.page.NewSection("self chams")
+        MENU:addToggle(ch_tab, ch_sec, "enable self chams", false, function(v)
+            CONFIG.self_chams = v
+            if v then self_chams_apply() else self_chams_restore() end
+        end)
+        MENU:addColor(ch_tab, ch_sec, "chams color", CONFIG.self_cham_col, function(c)
+            CONFIG.self_cham_col = c
+            if CONFIG.self_chams then self_chams_apply() end
+        end)
+
+        local modes = { "ForceField", "Neon", "Flat", "Glass", "Highlight" }
+        local mode_idx = 1
+        MENU:addToggle(ch_tab, ch_sec, "cycle mode", false, function()
+            mode_idx = (mode_idx % #modes) + 1
+            CONFIG.self_cham_type = modes[mode_idx]
+            if CONFIG.self_chams then self_chams_apply() end
+            notification(string.format("Chams: %s", CONFIG.self_cham_type))
+        end)
+
+        local se_sec = ch_tab.page.NewSection("self esp")
+        MENU:addToggle(ch_tab, se_sec, "self esp", false, function(v)
+            CONFIG.self_esp = v
+            if not v and self_esp_hl then
+                self_esp_hl:Destroy()
+                self_esp_hl = nil
+            end
+        end)
+        MENU:addColor(ch_tab, se_sec, "esp color", CONFIG.self_esp_col, function(c) CONFIG.self_esp_col = c end)
+    end
+
+    local esp_tab = MENU:addTab("esp")
+    if esp_tab then
+        local esp_sec = esp_tab.page.NewSection("player esp")
+        MENU:addToggle(esp_tab, esp_sec, "box", false, function(v) CONFIG.esp_box = v end)
+        MENU:addColor(esp_tab, esp_sec, "box color", CONFIG.esp_box_col, function(c) CONFIG.esp_box_col = c end)
+        MENU:addToggle(esp_tab, esp_sec, "name", false, function(v) CONFIG.esp_name = v end)
+        MENU:addColor(esp_tab, esp_sec, "name color", CONFIG.esp_name_col, function(c) CONFIG.esp_name_col = c end)
+        MENU:addToggle(esp_tab, esp_sec, "distance", false, function(v) CONFIG.esp_dist = v end)
+        MENU:addColor(esp_tab, esp_sec, "dist color", CONFIG.esp_dist_col, function(c) CONFIG.esp_dist_col = c end)
+
+        local role_sec = esp_tab.page.NewSection("role colors")
+        MENU:addColor(esp_tab, role_sec, "murderer", CONFIG.esp_role_col_mur, function(c) CONFIG.esp_role_col_mur = c end)
+        MENU:addColor(esp_tab, role_sec, "sheriff", CONFIG.esp_role_col_shf, function(c) CONFIG.esp_role_col_shf = c end)
+        MENU:addColor(esp_tab, role_sec, "innocent", CONFIG.esp_role_col_inn, function(c) CONFIG.esp_role_col_inn = c end)
+    end
+
+    local info_tab = MENU:addTab("info")
+    if info_tab then
+        local st_sec = info_tab.page.NewSection("info")
+        local info = Instance.new("TextLabel")
+        info.BackgroundTransparency = 1
+        info.Size = UDim2.new(1, 0, 0, 160)
+        info.Font = Enum.Font.Gotham
+        info.Text = "SHITARO standalone\n\nDrawing: " .. tostring(HAS_DRAWING) .. "\nMobile: " .. tostring(MENU.mobile) .. "\n\nAim: silent hook\nBacktrack: server-side history\nPrediction: ping + velocity\nTracer: bullet trail\nSelf chams: 5 modes\nSelf ESP: highlight self\n\nMenu: drag title\nMobile toggle: floating ≡"
+        info.TextColor3 = Color3.fromRGB(180, 180, 190)
+        info.TextSize = 12
+        info.TextWrapped = true
+        info.TextXAlignment = Enum.TextXAlignment.Left
+        info.TextYAlignment = Enum.TextYAlignment.Top
+        info.Parent = st_sec
+    end
+
+    notification("SHITARO loaded. Menu open.")
+else
+    warn("[SHITARO] menu build failed:", MENU.err)
+    notification("SHITARO: menu failed, features still active via keyboard")
+end
+
+-- ============================================================
+-- unload
+-- ============================================================
+getgenv().SHITARO_UNLOAD = function()
+    pcall(function() if hb then hb:Disconnect() end end)
+    pcall(function() if render_conn then render_conn:Disconnect() end end)
+    pcall(function() if tracer_conn then tracer_conn:Disconnect() end end)
+    pcall(self_chams_restore)
+    pcall(function() if self_esp_hl then self_esp_hl:Destroy() end end)
+    pcall(function() if self_hl then self_hl:Destroy() end end)
+    for plr, e in pairs(esp_cache) do
+        for _, d in pairs(e) do pcall(function() d:Remove() end) end
+    end
+    table.clear(esp_cache)
+    pcall(function() if fov_circle then fov_circle:Remove() end end)
+    pcall(function() if MENU.frame then MENU.frame:Destroy() end end)
+    notification("SHITARO unloaded.")
+end
