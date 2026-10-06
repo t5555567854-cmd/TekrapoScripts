@@ -1,8 +1,7 @@
 --!nocheck
 --!nolint
 -- ============================================================
---  STARWARE v2 + SHAXED AIM
---  safe fling · per-visual color picker · wide menu · fly-fix
+--  STARWARE v2 + SHAXED AIM — pretty menu · per-visual colors
 -- ============================================================
 if getgenv().UN_ADDON and getgenv().UN_ADDON.loaded then
     pcall(function() getgenv().UN_ADDON.unload() end)
@@ -26,9 +25,7 @@ if not LP then
 end
 local Cam        = workspace.CurrentCamera
 
--- ============================================================
 -- TOASTS
--- ============================================================
 local PG = LP:WaitForChild("PlayerGui")
 local toastGui = PG:FindFirstChild("UN_ADDON_TOASTS")
 if not toastGui then
@@ -64,9 +61,7 @@ local function notif(text, on)
     end)
 end
 
--- ============================================================
 -- BINDS
--- ============================================================
 local BINDS = {}
 local BIND_FILE = "un_addon_binds.json"
 local bindPicking = nil
@@ -100,9 +95,7 @@ local function registerBind(key, name, getter, setter)
     BINDS[key] = { input=nil, name=name, getter=getter, setter=setter }
 end
 
--- ============================================================
 -- STATE
--- ============================================================
 local SA    = { enabled=false, auto=true, predMs=100, part="Torso", quiet=true, wb=true }
 local SA_hist = {}
 local KS    = { enabled=false }
@@ -147,7 +140,7 @@ local SZ = { trail=1.5, parts=1.6, hat=1.4, foot=2.2, jump=4, bounce=0.5,
     orbAura=2.5, lightning=0.7, snow=1.2, glow=0.3, tracer=0.15,
     esp=0.5, ghost=0.3, atmo=0.35, rainbow=0.4, skyDust=1.5, bloom=1.4 }
 
--- палитра цветов для визуалов
+-- per-visual palette
 local PALETTE = {
     {name="Cyan",   c=Color3.fromRGB(0,220,255)},
     {name="Purple", c=Color3.fromRGB(160,80,255)},
@@ -178,9 +171,7 @@ local startFly, stopFly, startSpin, stopSpin, moveReset
 local applyTime, toggleFog, ka_tick, hookKills
 local bt_destroy, bt_build, bt_update, bt_conn
 
--- ============================================================
 -- ROLE CACHE
--- ============================================================
 local roleCacheMod=nil
 local roleCache={}
 local roleCacheStamp=0
@@ -231,9 +222,7 @@ local function UP()  local c=LP.Character; return c and (c:FindFirstChild("Upper
 local function HEAD() local c=LP.Character; return c and c:FindFirstChild("Head") end
 local function LT(c) return Color3.new(math.min(1,c.R*1.4),math.min(1,c.G*1.4),math.min(1,c.B*1.4)) end
 
--- ============================================================
 -- TARGETING
--- ============================================================
 local rp=RaycastParams.new()
 rp.FilterType=Enum.RaycastFilterType.Exclude
 local SNAP=48
@@ -301,9 +290,7 @@ local function sample_ping()
 end
 local function lead_time() if not EC.seen then return 0 end return math.clamp(EC.rtt,0,0.5) end
 
--- ============================================================
 -- SHAXED AIM
--- ============================================================
 task.spawn(function()
     while ADDON.loaded do
         task.wait(0.05)
@@ -399,9 +386,7 @@ local function SA_findQuietSpot(mRoot, myChar)
     end
 end
 
--- ============================================================
--- WEAPON HOOK (re-attach aware)
--- ============================================================
+-- WEAPON HOOK
 local WSH={}
 get_ws_fn=function()
     local ok,m=pcall(function() return require(Replicated:WaitForChild("ClientServices"):WaitForChild("WeaponService")) end)
@@ -520,9 +505,7 @@ getgenv().KNIFE_AIM_RESOLVE=function()
     return CFrame.new(part.Position+vel)
 end
 
--- ============================================================
 -- KILL AURA
--- ============================================================
 ka_tick=function()
     if not KA.on then return end
     local c=LP.Character; if not c then return end
@@ -557,9 +540,7 @@ ka_tick=function()
     if fired then KA.last=now end
 end
 
--- ============================================================
 -- AUTO GRAB GUN
--- ============================================================
 local function grab_has_role()
     if not grab_round_mod then
         local ok,m=pcall(function() return require(Replicated:WaitForChild("Modules"):WaitForChild("CurrentRoundClient")) end)
@@ -598,9 +579,7 @@ local function grab_desc_stop()
     if grab_desc_conn then pcall(function() grab_desc_conn:Disconnect() end) grab_desc_conn=nil end
 end
 
--- ============================================================
 -- TRACER
--- ============================================================
 local function to_pos(v)
     if typeof(v)=="Vector3" then return v end
     if typeof(v)=="CFrame" then return v.Position end
@@ -650,9 +629,7 @@ disableTracer_fn=function()
 end
 connect_trace_fn=enableTracer_fn
 
--- ============================================================
 -- BACKTRACK
--- ============================================================
 bt_destroy=function()
     if BT.model then pcall(function() BT.model:Destroy() end); BT.model=nil end
     BT.cache={}; BT.hist={}; BT.first=1; BT.n=0
@@ -722,9 +699,7 @@ bt_update=function()
 end
 bt_conn=RS.Heartbeat:Connect(function() if BT.on then pcall(bt_update) end end)
 
--- ============================================================
 -- MOVE
--- ============================================================
 applySpeed=function() local h=hum(); if h then h.WalkSpeed=MOVE.speedOn and MOVE.speed or 16 end end
 applyJump=function() local h=hum(); if h then h.JumpPower=MOVE.jumpOn and MOVE.jump or 50 end end
 applyHip=function() local h=hum(); if h then h.HipHeight=MOVE.hipOn and MOVE.hip or 2 end end
@@ -757,7 +732,6 @@ stopNoclip=function()
     table.clear(moveConns.nc)
 end
 
--- fly antikick
 startFly=function()
     if flyConn then pcall(function() flyConn:Disconnect() end) flyConn=nil end
     if MOVE.fg then pcall(function() MOVE.fg:Destroy() end) MOVE.fg=nil end
@@ -765,20 +739,11 @@ startFly=function()
     local c0=LP.Character; local hrp0=c0 and c0:FindFirstChild("HumanoidRootPart"); if not hrp0 then return end
     local h0=c0:FindFirstChildOfClass("Humanoid"); if not h0 then return end
     pcall(function() h0.PlatformStand=true end)
-
     MOVE.fg=Instance.new("BodyGyro")
-    MOVE.fg.P=1e4
-    MOVE.fg.D=100
-    MOVE.fg.MaxTorque=Vector3.new(4e5,4e5,4e5)
-    MOVE.fg.CFrame=workspace.CurrentCamera.CFrame
-    MOVE.fg.Parent=hrp0
-
+    MOVE.fg.P=1e4 MOVE.fg.D=100 MOVE.fg.MaxTorque=Vector3.new(4e5,4e5,4e5)
+    MOVE.fg.CFrame=workspace.CurrentCamera.CFrame MOVE.fg.Parent=hrp0
     MOVE.fv=Instance.new("BodyVelocity")
-    MOVE.fv.MaxForce=Vector3.new(4e5,4e5,4e5)
-    MOVE.fv.Velocity=Vector3.zero
-    MOVE.fv.P=1250
-    MOVE.fv.Parent=hrp0
-
+    MOVE.fv.MaxForce=Vector3.new(4e5,4e5,4e5) MOVE.fv.Velocity=Vector3.zero MOVE.fv.P=1250 MOVE.fv.Parent=hrp0
     flyConn=RS.RenderStepped:Connect(function(dt)
         if not MOVE.fly or not ADDON.loaded then return end
         local c=LP.Character; if not c then return end
@@ -795,11 +760,8 @@ startFly=function()
         if UIS:IsKeyDown(Enum.KeyCode.D) then dir=dir+rgt end
         if UIS:IsKeyDown(Enum.KeyCode.Space) then dir=dir+Vector3.new(0,1,0) end
         if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then dir=dir-Vector3.new(0,1,0) end
-        if dir.Magnitude>0.1 then
-            MOVE.fv.Velocity=dir.Unit*MOVE.flySpeed
-        else
-            MOVE.fv.Velocity=Vector3.zero
-        end
+        if dir.Magnitude>0.1 then MOVE.fv.Velocity=dir.Unit*MOVE.flySpeed
+        else MOVE.fv.Velocity=Vector3.zero end
     end)
 end
 stopFly=function()
@@ -857,10 +819,8 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
--- TROLL (safe + risky)
--- ============================================================
-local function flingCore(thrp,thum,time,risky)
+-- TROLL
+local function flingCore(thrp,thum,time)
     local c=LP.Character
     local hrp=c and c:FindFirstChild("HumanoidRootPart"); if not hrp then return false end
     local hum2=c and c:FindFirstChildOfClass("Humanoid"); if not hum2 then return false end
@@ -869,27 +829,10 @@ local function flingCore(thrp,thum,time,risky)
     local cam=workspace.CurrentCamera
     local oldSubj=cam.CameraSubject
     local oldFall=workspace.FallenPartsDestroyHeight
-
+    pcall(function() workspace.FallenPartsDestroyHeight=0/0 end)
+    pcall(function() cam.CameraSubject=thrp end)
     local bv=Instance.new("BodyVelocity")
-    bv.Parent=hrp
-    if risky then
-        bv.MaxForce=Vector3.new(9e9,9e9,9e9); bv.P=1250
-        pcall(function() workspace.FallenPartsDestroyHeight=0/0 end)
-        pcall(function() cam.CameraSubject=thrp end)
-    else
-        bv.MaxForce=Vector3.new(3e5,3e5,3e5); bv.P=800
-    end
-    bv.Velocity=Vector3.zero
-
-    local bg
-    if not risky then
-        bg=Instance.new("BodyGyro")
-        bg.P=1e4; bg.D=100
-        bg.MaxTorque=Vector3.new(3e5,3e5,3e5)
-        bg.CFrame=hrp.CFrame
-        bg.Parent=hrp
-    end
-
+    bv.MaxForce=Vector3.new(9e9,9e9,9e9) bv.Velocity=Vector3.zero bv.Parent=hrp
     local se=hum2:GetStateEnabled(Enum.HumanoidStateType.Seated)
     pcall(function() hum2:SetStateEnabled(Enum.HumanoidStateType.Seated,false) end)
     local t0=os.clock()
@@ -899,42 +842,26 @@ local function flingCore(thrp,thum,time,risky)
         local tv=thrp.Velocity
         if tv.Magnitude>50 and thum then tv=thum.MoveDirection*thum.WalkSpeed end
         local lead=thrp.Position+tv*0.08
-
-        if risky then
-            ang=ang+165
-            local r=ang%360
-            local off
-            if r<90 then off=Vector3.new(0,2.5,0)
-            elseif r<180 then off=Vector3.new(0,-2.5,0)
-            elseif r<270 then off=Vector3.new(2.5,0,0)
-            else off=Vector3.new(-2.5,0,0) end
-            local cf=CFrame.new(lead+off)*CFrame.Angles(math.rad(ang),0,0)
-            pcall(function()
-                hrp.CFrame=cf
-                c:SetPrimaryPartCFrame(cf)
-                hrp.Velocity=Vector3.new(9e8,9e8*10,9e8)
-                hrp.RotVelocity=Vector3.new(9e9,9e9,9e9)
-            end)
-        else
-            -- безопасный: BodyVelocity тянет к цели, BodyGyro смотрит на цель
-            local toT=lead-hrp.Position
-            if toT.Magnitude>0.1 then
-                bv.Velocity=toT.Unit*math.min(toT.Magnitude*6,120)
-            else
-                bv.Velocity=Vector3.zero
-            end
-            if bg and bg.Parent then
-                bg.CFrame=CFrame.new(hrp.Position, lead)
-            end
-        end
+        ang=ang+165
+        local r=ang%360
+        local off
+        if r<90 then off=Vector3.new(0,2.5,0)
+        elseif r<180 then off=Vector3.new(0,-2.5,0)
+        elseif r<270 then off=Vector3.new(2.5,0,0)
+        else off=Vector3.new(-2.5,0,0) end
+        local cf=CFrame.new(lead+off)*CFrame.Angles(math.rad(ang),0,0)
+        pcall(function()
+            hrp.CFrame=cf
+            c:SetPrimaryPartCFrame(cf)
+            hrp.Velocity=Vector3.new(9e8,9e8*10,9e8)
+            hrp.RotVelocity=Vector3.new(9e9,9e9,9e9)
+        end)
         RS.Heartbeat:Wait()
     end
-
     if bv.Parent then bv:Destroy() end
-    if bg and bg.Parent then bg:Destroy() end
     pcall(function() hum2:SetStateEnabled(Enum.HumanoidStateType.Seated,se) end)
     pcall(function() cam.CameraSubject=hum2 end)
-    if risky and hrp.Parent then
+    if hrp.Parent then
         pcall(function()
             hrp.CFrame=orig
             c:SetPrimaryPartCFrame(orig)
@@ -942,22 +869,20 @@ local function flingCore(thrp,thum,time,risky)
             hrp.Velocity=Vector3.zero
         end)
     end
-    if risky then
-        pcall(function() workspace.FallenPartsDestroyHeight=oldFall end)
-        if oldSubj then pcall(function() cam.CameraSubject=oldSubj end) end
-    end
+    pcall(function() workspace.FallenPartsDestroyHeight=oldFall end)
+    if oldSubj then pcall(function() cam.CameraSubject=oldSubj end) end
     return true
 end
-local function flingTarget(target,risky)
+local function flingTarget(target)
     if TROLL.flinging then return end
     local tchar=target and target.Character; if not tchar then return end
     local thrp=tchar:FindFirstChild("HumanoidRootPart") or tchar:FindFirstChild("Head"); if not thrp then return end
     local thum=tchar:FindFirstChildOfClass("Humanoid")
     TROLL.flinging=true
-    task.spawn(function() flingCore(thrp,thum,2.2,risky); TROLL.flinging=false end)
+    task.spawn(function() flingCore(thrp,thum,2.2); TROLL.flinging=false end)
 end
-local function flingNearest(risky) local t=nearest_player(); if t then flingTarget(t,risky) end end
-local function flingAll(risky)
+local function flingNearest() local t=nearest_player(); if t then flingTarget(t) end end
+local function flingAll()
     if TROLL.flinging then return end
     TROLL.flinging=true
     task.spawn(function()
@@ -965,7 +890,7 @@ local function flingAll(risky)
             if p~=LP and p.Character then
                 local thrp=p.Character:FindFirstChild("HumanoidRootPart") or p.Character:FindFirstChild("Head")
                 local thum=p.Character:FindFirstChildOfClass("Humanoid")
-                if thrp and HRP() then flingCore(thrp,thum,1.5,risky); task.wait(0.15) end
+                if thrp and HRP() then flingCore(thrp,thum,1.5); task.wait(0.15) end
             end
         end
         TROLL.flinging=false
@@ -973,9 +898,7 @@ local function flingAll(risky)
 end
 local function stopTroll() TROLL.flinging=false end
 
--- ============================================================
 -- VISUALS
--- ============================================================
 local function mkTrail()
     local up=UP(); if not up then return end
     if up:FindFirstChild("sT0") then return end
@@ -1359,9 +1282,7 @@ toggleFog=function(v)
     else L.FogEnd=1e6; L.FogStart=0 end
 end
 
--- ============================================================
 -- ESP
--- ============================================================
 local function mkESP()
     if espC then return end
     espC=RS.Heartbeat:Connect(function()
@@ -1460,9 +1381,7 @@ local function updateRoleTags()
     end
 end
 
--- ============================================================
 -- JUMP
--- ============================================================
 local function mkJump()
     if jumpC then jumpC:Disconnect() end
     local c=LP.Character; if not c then return end
@@ -1514,9 +1433,7 @@ local function mkJump()
 end
 local function clJump() if jumpC then jumpC:Disconnect(); jumpC=nil end end
 
--- ============================================================
 -- KILL LIGHTNING
--- ============================================================
 local function killLightning(pos)
     local bm=Instance.new("Part")
     bm.Name="sKl"; bm.Size=Vector3.new(1.5,80,1.5)
@@ -1556,9 +1473,7 @@ hookKills=function()
     end
 end
 
--- ============================================================
 -- HEADLESS
--- ============================================================
 local function applySkinAll()
     local c=LP.Character; if not c then return end
     local h=c:FindFirstChild("Head")
@@ -1571,9 +1486,7 @@ local function applySkinAll()
     end
 end
 
--- ============================================================
 -- KILL ALL
--- ============================================================
 local function killAll()
     local c=LP.Character; if not c then notif("no character",false) return end
     local knife=c:FindFirstChild("Knife")
@@ -1610,7 +1523,7 @@ local function killAll()
 end
 
 -- ============================================================
--- MENU (520 x 340)
+-- MENU  (pretty)
 -- ============================================================
 local function buildMenu()
     local sg = Instance.new("ScreenGui")
@@ -1621,83 +1534,127 @@ local function buildMenu()
     sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     sg.Parent = PG
 
+    -- ===== main frame =====
     local main = Instance.new("Frame")
     main.Name = "Main"
     main.AnchorPoint = Vector2.new(0.5, 0.5)
-    main.Size = UDim2.new(0, 520, 0, 340)
+    main.Size = UDim2.new(0, 560, 0, 360)
     main.Position = UDim2.new(0.5, 0, 0.5, 0)
     main.BackgroundColor3 = BG
     main.BorderSizePixel = 0
     main.Active = true
     main.Parent = sg
-    Instance.new("UICorner", main).CornerRadius = UDim.new(0, 14)
-    local mst = Instance.new("UIStroke", main); mst.Color = A; mst.Thickness = 1.5; mst.Transparency = 0.3
+    Instance.new("UICorner", main).CornerRadius = UDim.new(0, 16)
+    local mst = Instance.new("UIStroke", main)
+    mst.Color = A; mst.Thickness = 1.5; mst.Transparency = 0.25
     local mstGrad = Instance.new("UIGradient", mst)
+    mstGrad.Color = ColorSequence.new(A, A2)
+    mstGrad.Rotation = 45
     local mainScale = Instance.new("UIScale", main); mainScale.Scale = 0.9
 
+    -- outer glow
+    local glow = Instance.new("Frame", main)
+    glow.Name = "Glow"
+    glow.Size = UDim2.new(1, 20, 1, 20)
+    glow.Position = UDim2.new(0, -10, 0, -10)
+    glow.BackgroundColor3 = A
+    glow.BackgroundTransparency = 0.92
+    glow.BorderSizePixel = 0
+    glow.ZIndex = -1
+    Instance.new("UICorner", glow).CornerRadius = UDim.new(0, 24)
+
+    -- ===== header =====
     local header = Instance.new("Frame")
     header.Name = "Header"
-    header.Size = UDim2.new(1, 0, 0, 42)
+    header.Size = UDim2.new(1, 0, 0, 48)
     header.BackgroundColor3 = BG2
     header.BorderSizePixel = 0
     header.Parent = main
-    Instance.new("UICorner", header).CornerRadius = UDim.new(0, 14)
+    Instance.new("UICorner", header).CornerRadius = UDim.new(0, 16)
+
+    -- header gradient strip
+    local hg = Instance.new("Frame", header)
+    hg.Size = UDim2.new(1, 0, 0, 2)
+    hg.Position = UDim2.new(0, 0, 1, -2)
+    hg.BackgroundColor3 = A
+    hg.BorderSizePixel = 0
+    local hgGrad = Instance.new("UIGradient", hg)
+    hgGrad.Color = ColorSequence.new(A, A2)
+    hgGrad.Rotation = 0
+
+    -- logo dot
+    local logoDot = Instance.new("Frame", header)
+    logoDot.Size = UDim2.new(0, 24, 0, 24)
+    logoDot.Position = UDim2.new(0, 16, 0.5, -12)
+    logoDot.BackgroundColor3 = A
+    logoDot.BorderSizePixel = 0
+    Instance.new("UICorner", logoDot).CornerRadius = UDim.new(1, 0)
+    local dotGrad = Instance.new("UIGradient", logoDot)
+    dotGrad.Color = ColorSequence.new(A, A2)
+    dotGrad.Rotation = 45
+    local dotInner = Instance.new("Frame", logoDot)
+    dotInner.Size = UDim2.new(0, 8, 0, 8)
+    dotInner.Position = UDim2.new(0.5, -4, 0.5, -4)
+    dotInner.BackgroundColor3 = BG2
+    dotInner.BorderSizePixel = 0
+    Instance.new("UICorner", dotInner).CornerRadius = UDim.new(1, 0)
 
     local title = Instance.new("TextLabel")
     title.BackgroundTransparency = 1
-    title.Size = UDim2.new(1, -160, 1, 0)
-    title.Position = UDim2.new(0, 16, 0, 0)
+    title.Size = UDim2.new(1, -200, 1, 0)
+    title.Position = UDim2.new(0, 50, 0, 0)
     title.Font = Enum.Font.GothamBlack
-    title.TextSize = 16
+    title.TextSize = 17
     title.TextColor3 = A
     title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Text = "★ StarWare"
+    title.Text = "STARWARE"
     title.Parent = header
     local tGrad = Instance.new("UIGradient", title)
+    tGrad.Color = ColorSequence.new(A, A2)
+    tGrad.Rotation = 0
 
-    local themeBtn = Instance.new("TextButton")
-    themeBtn.Size = UDim2.new(0, 32, 0, 32)
-    themeBtn.Position = UDim2.new(1, -116, 0.5, -16)
-    themeBtn.BackgroundColor3 = BG3
-    themeBtn.BorderSizePixel = 0
-    themeBtn.Text = "🎨"
-    themeBtn.Font = Enum.Font.GothamBold
-    themeBtn.TextSize = 15
+    local subtitle = Instance.new("TextLabel")
+    subtitle.BackgroundTransparency = 1
+    subtitle.Size = UDim2.new(0, 200, 0, 12)
+    subtitle.Position = UDim2.new(0, 50, 0, 30)
+    subtitle.Font = Enum.Font.GothamMedium
+    subtitle.TextSize = 9
+    subtitle.TextColor3 = A2
+    subtitle.TextXAlignment = Enum.TextXAlignment.Left
+    subtitle.Text = "v2 · shaxed edition"
+    subtitle.Parent = header
+
+    -- window buttons (pretty circles)
+    local function winBtn(label, xo, baseColor)
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(0, 30, 0, 30)
+        b.Position = UDim2.new(1, xo, 0.5, -15)
+        b.BackgroundColor3 = baseColor
+        b.BorderSizePixel = 0
+        b.AutoButtonColor = false
+        b.Text = label
+        b.Font = Enum.Font.GothamBlack
+        b.TextSize = 14
+        b.TextColor3 = Color3.new(1,1,1)
+        b.Parent = header
+        Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
+        local s = Instance.new("UIStroke", b)
+        s.Color = Color3.fromRGB(255,255,255); s.Thickness = 1; s.Transparency = 0.75
+        b.MouseEnter:Connect(function()
+            Tween:Create(b, TweenInfo.new(0.15), {Size=UDim2.new(0,32,0,32), Position=UDim2.new(1, xo-1, 0.5, -16)}):Play()
+        end)
+        b.MouseLeave:Connect(function()
+            Tween:Create(b, TweenInfo.new(0.15), {Size=UDim2.new(0,30,0,30), Position=UDim2.new(1, xo, 0.5, -15)}):Play()
+        end)
+        return b
+    end
+    local themeBtn = winBtn("◈", -124, BG3)
     themeBtn.TextColor3 = A2
-    themeBtn.Parent = header
-    Instance.new("UICorner", themeBtn).CornerRadius = UDim.new(0, 8)
-
-    local minBtn = Instance.new("TextButton")
-    minBtn.Size = UDim2.new(0, 32, 0, 32)
-    minBtn.Position = UDim2.new(1, -78, 0.5, -16)
-    minBtn.BackgroundColor3 = BG3
-    minBtn.BorderSizePixel = 0
-    minBtn.Text = "—"
-    minBtn.Font = Enum.Font.GothamBold
-    minBtn.TextSize = 16
+    local minBtn = winBtn("−", -88, BG3)
     minBtn.TextColor3 = Color3.fromRGB(220,220,220)
-    minBtn.Parent = header
-    Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 8)
+    local closeBtn = winBtn("×", -52, Color3.fromRGB(200,60,80))
 
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 32, 0, 32)
-    closeBtn.Position = UDim2.new(1, -40, 0.5, -16)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(80,25,35)
-    closeBtn.BorderSizePixel = 0
-    closeBtn.Text = "X"
-    closeBtn.Font = Enum.Font.GothamBlack
-    closeBtn.TextSize = 17
-    closeBtn.TextColor3 = Color3.fromRGB(255,200,200)
-    closeBtn.Parent = header
-    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
-
-    local accent = Instance.new("Frame", main)
-    accent.Size = UDim2.new(1, -24, 0, 1)
-    accent.Position = UDim2.new(0, 12, 0, 42)
-    accent.BackgroundColor3 = A
-    accent.BorderSizePixel = 0
-    local accentGrad = Instance.new("UIGradient", accent)
-
+    -- drag
     do
         local dragging, dragStart, startPos
         local function inFrame(pos, frame)
@@ -1733,20 +1690,20 @@ local function buildMenu()
         end)
     end
 
+    -- ===== tabs (pill) =====
     local tabBar = Instance.new("Frame")
-    tabBar.Size = UDim2.new(1, -16, 0, 38)
-    tabBar.Position = UDim2.new(0, 8, 0, 50)
+    tabBar.Size = UDim2.new(1, -16, 0, 40)
+    tabBar.Position = UDim2.new(0, 8, 0, 56)
     tabBar.BackgroundColor3 = BG2
     tabBar.BorderSizePixel = 0
     tabBar.Parent = main
-    Instance.new("UICorner", tabBar).CornerRadius = UDim.new(0, 10)
+    Instance.new("UICorner", tabBar).CornerRadius = UDim.new(0, 12)
 
     local tabScroll = Instance.new("ScrollingFrame")
     tabScroll.Size = UDim2.new(1, 0, 1, 0)
     tabScroll.BackgroundTransparency = 1
     tabScroll.BorderSizePixel = 0
-    tabScroll.ScrollBarThickness = 3
-    tabScroll.ScrollBarImageColor3 = A
+    tabScroll.ScrollBarThickness = 0
     tabScroll.ScrollingDirection = Enum.ScrollingDirection.X
     tabScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     tabScroll.AutomaticCanvasSize = Enum.AutomaticSize.X
@@ -1760,8 +1717,8 @@ local function buildMenu()
     tp.PaddingLeft = UDim.new(0, 8); tp.PaddingRight = UDim.new(0, 8)
 
     local content = Instance.new("Frame")
-    content.Size = UDim2.new(1, -16, 1, -100)
-    content.Position = UDim2.new(0, 8, 0, 94)
+    content.Size = UDim2.new(1, -16, 1, -114)
+    content.Position = UDim2.new(0, 8, 0, 106)
     content.BackgroundTransparency = 1
     content.BorderSizePixel = 0
     content.ClipsDescendants = true
@@ -1776,19 +1733,22 @@ local function buildMenu()
 
     local function section(parent, text)
         local f = Instance.new("Frame")
-        f.Size = UDim2.new(1, -8, 0, 24)
+        f.Size = UDim2.new(1, -8, 0, 26)
         f.BackgroundTransparency = 1
         f.Parent = parent
         local bar = Instance.new("Frame", f)
-        bar.Size = UDim2.new(0, 3, 0, 12)
-        bar.Position = UDim2.new(0, 0, 0.5, -6)
+        bar.Size = UDim2.new(0, 3, 0, 14)
+        bar.Position = UDim2.new(0, 0, 0.5, -7)
         bar.BackgroundColor3 = A
         bar.BorderSizePixel = 0
         Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+        local barGrad = Instance.new("UIGradient", bar)
+        barGrad.Color = ColorSequence.new(A, A2)
+        barGrad.Rotation = 90
         local l = Instance.new("TextLabel")
         l.BackgroundTransparency = 1
         l.Size = UDim2.new(1, -8, 1, 0)
-        l.Position = UDim2.new(0, 12, 0, 0)
+        l.Position = UDim2.new(0, 14, 0, 0)
         l.Font = Enum.Font.GothamBlack
         l.TextSize = 11
         l.TextColor3 = A2
@@ -1799,7 +1759,7 @@ local function buildMenu()
 
     local function toggle(parent, text, getter, setter, onChange)
         local row = Instance.new("TextButton")
-        row.Size = UDim2.new(1, -8, 0, 38)
+        row.Size = UDim2.new(1, -8, 0, 40)
         row.BackgroundColor3 = BG3
         row.BorderSizePixel = 0
         row.AutoButtonColor = false
@@ -1810,8 +1770,8 @@ local function buildMenu()
         rowStroke.Color = Color3.fromRGB(45,45,55); rowStroke.Thickness = 1
         local lbl = Instance.new("TextLabel")
         lbl.BackgroundTransparency = 1
-        lbl.Size = UDim2.new(1, -70, 1, 0)
-        lbl.Position = UDim2.new(0, 12, 0, 0)
+        lbl.Size = UDim2.new(1, -76, 1, 0)
+        lbl.Position = UDim2.new(0, 14, 0, 0)
         lbl.Font = Enum.Font.GothamMedium
         lbl.TextSize = 14
         lbl.TextColor3 = Color3.new(1,1,1)
@@ -1820,30 +1780,44 @@ local function buildMenu()
         lbl.Text = text
         lbl.Parent = row
         local pill = Instance.new("Frame")
-        pill.Size = UDim2.new(0, 44, 0, 22)
-        pill.Position = UDim2.new(1, -56, 0.5, -11)
-        pill.BackgroundColor3 = Color3.fromRGB(70,70,90)
+        pill.Size = UDim2.new(0, 46, 0, 22)
+        pill.Position = UDim2.new(1, -60, 0.5, -11)
+        pill.BackgroundColor3 = Color3.fromRGB(60,60,75)
         pill.BorderSizePixel = 0
         pill.Parent = row
         Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
+        local pillGrad = Instance.new("UIGradient", pill)
+        pillGrad.Color = ColorSequence.new(Color3.fromRGB(60,60,75), Color3.fromRGB(40,40,55))
+        pillGrad.Rotation = 0
         local knob = Instance.new("Frame")
-        knob.Size = UDim2.new(0, 16, 0, 16)
-        knob.Position = UDim2.new(0, 3, 0.5, -8)
+        knob.Size = UDim2.new(0, 18, 0, 18)
+        knob.Position = UDim2.new(0, 2, 0.5, -9)
         knob.BackgroundColor3 = Color3.new(1,1,1)
         knob.BorderSizePixel = 0
         knob.Parent = pill
         Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-        local function render()
+        local knobStroke = Instance.new("UIStroke", knob)
+        knobStroke.Color = Color3.fromRGB(0,0,0); knobStroke.Thickness = 1; knobStroke.Transparency = 0.85
+
+        local function render(anim)
             local on = getter()
-            pill.BackgroundColor3 = on and A or Color3.fromRGB(70,70,90)
-            knob.Position = on and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
-            rowStroke.Color = on and A or Color3.fromRGB(45,45,55)
-            rowStroke.Transparency = on and 0.4 or 0
+            local targetBg = on and A or Color3.fromRGB(60,60,75)
+            local targetPos = on and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9)
+            if anim then
+                Tween:Create(pill, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {BackgroundColor3=targetBg}):Play()
+                Tween:Create(knob, TweenInfo.new(0.25, Enum.EasingStyle.Back), {Position=targetPos}):Play()
+                Tween:Create(rowStroke, TweenInfo.new(0.2), {Color=on and A or Color3.fromRGB(45,45,55), Transparency=on and 0.4 or 0}):Play()
+            else
+                pill.BackgroundColor3 = targetBg
+                knob.Position = targetPos
+                rowStroke.Color = on and A or Color3.fromRGB(45,45,55)
+                rowStroke.Transparency = on and 0.4 or 0
+            end
         end
-        render()
+        render(false)
         row.MouseButton1Click:Connect(function()
             setter(not getter())
-            render()
+            render(true)
             if onChange then pcall(onChange) end
             notif(text, getter())
         end)
@@ -1858,7 +1832,7 @@ local function buildMenu()
 
     local function button(parent, text, cb)
         local b = Instance.new("TextButton")
-        b.Size = UDim2.new(1, -8, 0, 34)
+        b.Size = UDim2.new(1, -8, 0, 36)
         b.BackgroundColor3 = BG3
         b.BorderSizePixel = 0
         b.AutoButtonColor = false
@@ -1884,7 +1858,7 @@ local function buildMenu()
 
     local function slider(parent, text, minv, maxv, getter, setter, onChange)
         local f = Instance.new("Frame")
-        f.Size = UDim2.new(1, -8, 0, 52)
+        f.Size = UDim2.new(1, -8, 0, 54)
         f.BackgroundColor3 = BG3
         f.BorderSizePixel = 0
         f.Parent = parent
@@ -1894,16 +1868,16 @@ local function buildMenu()
         local lbl = Instance.new("TextLabel")
         lbl.BackgroundTransparency = 1
         lbl.Size = UDim2.new(1, -24, 0, 22)
-        lbl.Position = UDim2.new(0, 12, 0, 4)
+        lbl.Position = UDim2.new(0, 14, 0, 5)
         lbl.Font = Enum.Font.GothamMedium
         lbl.TextSize = 13
         lbl.TextColor3 = Color3.new(1,1,1)
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         lbl.Parent = f
         local bar = Instance.new("Frame")
-        bar.Size = UDim2.new(1, -24, 0, 12)
-        bar.Position = UDim2.new(0, 12, 0, 30)
-        bar.BackgroundColor3 = Color3.fromRGB(50,50,60)
+        bar.Size = UDim2.new(1, -28, 0, 8)
+        bar.Position = UDim2.new(0, 14, 0, 34)
+        bar.BackgroundColor3 = Color3.fromRGB(40,40,52)
         bar.BorderSizePixel = 0
         bar.Parent = f
         Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
@@ -1912,11 +1886,28 @@ local function buildMenu()
         fill.BorderSizePixel = 0
         fill.Parent = bar
         Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+        local fillGrad = Instance.new("UIGradient", fill)
+        fillGrad.Color = ColorSequence.new(A, A2)
+        fillGrad.Rotation = 0
+        -- knob handle
+        local handle = Instance.new("Frame")
+        handle.Size = UDim2.new(0, 16, 0, 16)
+        handle.AnchorPoint = Vector2.new(0.5, 0.5)
+        handle.BackgroundColor3 = Color3.new(1,1,1)
+        handle.BorderSizePixel = 0
+        handle.ZIndex = 3
+        handle.Parent = bar
+        Instance.new("UICorner", handle).CornerRadius = UDim.new(1, 0)
+        local handleStroke = Instance.new("UIStroke", handle)
+        handleStroke.Color = A; handleStroke.Thickness = 1.5
+
         local function upd()
             local v = getter()
-            lbl.Text = text..": "..tostring(v)
+            lbl.Text = text.."  ·  "..tostring(v)
             local rel = (v - minv) / math.max(0.0001, maxv - minv)
-            fill.Size = UDim2.new(math.clamp(rel, 0, 1), 0, 1, 0)
+            rel = math.clamp(rel, 0, 1)
+            fill.Size = UDim2.new(rel, 0, 1, 0)
+            handle.Position = UDim2.new(rel, 0, 0.5, 0)
         end
         upd()
         local dragging = false
@@ -1946,12 +1937,13 @@ local function buildMenu()
         return f, upd
     end
 
+    -- tabs
     local tabs = {}
     local currentBtn = nil
     local function addTab(name, order)
         local b = Instance.new("TextButton")
-        b.Size = UDim2.new(0, 74, 0, 30)
-        b.BackgroundColor3 = BG3
+        b.Size = UDim2.new(0, 80, 0, 30)
+        b.BackgroundColor3 = Color3.fromRGB(30,30,40)
         b.BorderSizePixel = 0
         b.AutoButtonColor = false
         b.Font = Enum.Font.GothamBold
@@ -1960,12 +1952,16 @@ local function buildMenu()
         b.Text = name
         b.LayoutOrder = order or 0
         b.Parent = tabScroll
-        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+        Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
+        local bGrad = Instance.new("UIGradient", b)
+        bGrad.Color = ColorSequence.new(Color3.fromRGB(30,30,40), Color3.fromRGB(24,24,32))
+        bGrad.Rotation = 0
+
         local page = Instance.new("ScrollingFrame")
         page.Size = UDim2.new(1, 0, 1, 0)
         page.BackgroundTransparency = 1
         page.BorderSizePixel = 0
-        page.ScrollBarThickness = 4
+        page.ScrollBarThickness = 3
         page.ScrollBarImageColor3 = A
         page.CanvasSize = UDim2.new(0, 0, 0, 0)
         page.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -1977,16 +1973,22 @@ local function buildMenu()
         local pp = Instance.new("UIPadding", page)
         pp.PaddingTop = UDim.new(0, 6); pp.PaddingBottom = UDim.new(0, 12)
         pp.PaddingLeft = UDim.new(0, 4); pp.PaddingRight = UDim.new(0, 4)
+
         local entry = { btn = b, page = page, name = name }
         tabs[#tabs+1] = entry
         b.MouseButton1Click:Connect(function()
             for _, t in ipairs(tabs) do
-                t.btn.BackgroundColor3 = BG3
+                t.btn.BackgroundColor3 = Color3.fromRGB(30,30,40)
                 t.btn.TextColor3 = Color3.fromRGB(180,190,210)
+                if t.btn:FindFirstChildOfClass("UIGradient") then
+                    t.btn:FindFirstChildOfClass("UIGradient").Color = ColorSequence.new(Color3.fromRGB(30,30,40), Color3.fromRGB(24,24,32))
+                end
                 t.page.Visible = false
             end
             b.BackgroundColor3 = A
             b.TextColor3 = Color3.new(1,1,1)
+            local g = b:FindFirstChildOfClass("UIGradient")
+            if g then g.Color = ColorSequence.new(A, A2) end
             page.Visible = true
             currentBtn = b
             fadeOverlay.BackgroundTransparency = 0
@@ -2002,27 +2004,27 @@ local function buildMenu()
         if tabs[1] then
             tabs[1].btn.BackgroundColor3 = A
             tabs[1].btn.TextColor3 = Color3.new(1,1,1)
+            local g = tabs[1].btn:FindFirstChildOfClass("UIGradient")
+            if g then g.Color = ColorSequence.new(A, A2) end
             tabs[1].page.Visible = true
             currentBtn = tabs[1].btn
         end
-        Tween:Create(mainScale, TweenInfo.new(0.35, Enum.EasingStyle.Back), {Scale=1}):Play()
+        Tween:Create(mainScale, TweenInfo.new(0.4, Enum.EasingStyle.Back), {Scale=1}):Play()
     end)
 
+    -- animated shimmer on stroke
     local startT = os.clock()
     RS.RenderStepped:Connect(function()
         if not main.Visible then return end
         local t = (os.clock() - startT) * 0.4
-        local kps = {}
-        for i = 0, 8 do
-            local x = i / 8
-            local v = 0.5 + 0.5 * math.sin((x - t) * math.pi * 2)
-            local c = math.floor(80 + v * 175)
-            kps[#kps+1] = ColorSequenceKeypoint.new(x, Color3.fromRGB(c, c, c))
-        end
-        local seq = ColorSequence.new(kps)
-        mstGrad.Color = seq
-        tGrad.Color = seq
-        accentGrad.Color = seq
+        local k1 = 0.5 + 0.5 * math.sin(t * math.pi * 2)
+        local col = Color3.new(
+            A.R + (A2.R - A.R) * k1,
+            A.G + (A2.G - A.G) * k1,
+            A.B + (A2.B - A.B) * k1
+        )
+        mstGrad.Color = ColorSequence.new(A, col)
+        tGrad.Color = ColorSequence.new(col, A2)
     end)
 
     -- ============ COMBAT ============
@@ -2108,25 +2110,20 @@ local function buildMenu()
 
     -- ============ TROLL ============
     local pTroll = addTab("Troll", 3)
-    section(pTroll, "Fling SAFE (не кикает)")
-    button(pTroll, "Fling Nearest", function() flingNearest(false) end)
-    button(pTroll, "Fling All", function() flingAll(false) end)
+    button(pTroll, "Fling Nearest", flingNearest)
+    button(pTroll, "Fling All", flingAll)
     button(pTroll, "Fling Murderer", function()
         for _,p in ipairs(Players:GetPlayers()) do
-            if p~=LP and alive(p) and cachedRole(p)=="m" then flingTarget(p,false); return end
+            if p~=LP and alive(p) and cachedRole(p)=="m" then flingTarget(p); return end
         end
         notif("no murderer", false)
     end)
     button(pTroll, "Fling Sheriff", function()
         for _,p in ipairs(Players:GetPlayers()) do
-            if p~=LP and alive(p) and cachedRole(p)=="s" then flingTarget(p,false); return end
+            if p~=LP and alive(p) and cachedRole(p)=="s" then flingTarget(p); return end
         end
         notif("no sheriff", false)
     end)
-    section(pTroll, "Fling RISKY (кикает)")
-    button(pTroll, "Risky Fling Nearest", function() flingNearest(true) end)
-    button(pTroll, "Risky Fling All", function() flingAll(true) end)
-    section(pTroll, "Control")
     button(pTroll, "Stop Troll", stopTroll)
     button(pTroll, "TP to Murder", function()
         for _,p in ipairs(Players:GetPlayers()) do
@@ -2162,32 +2159,31 @@ local function buildMenu()
 
     -- ============ VISUALS ============
     local pV = addTab("Visuals", 4)
-    section(pV, "Color Picker")
 
+    section(pV, "Color picker")
+    -- viz selector row
     local VIZ_LIST = {
-        {key="trail", label="Trail"},
-        {key="parts", label="Aura"},
-        {key="hat", label="Hat"},
-        {key="glow", label="Glow"},
-        {key="snow", label="Snow"},
+        {key="trail",     label="Trail"},
+        {key="parts",     label="Aura"},
+        {key="hat",       label="Hat"},
+        {key="glow",      label="Glow"},
+        {key="snow",      label="Snow"},
         {key="lightning", label="Light"},
-        {key="orbAura", label="Orb"},
-        {key="foot", label="Foot"},
-        {key="ghost", label="Ghost"},
-        {key="jump", label="Jump"},
-        {key="skyDust", label="SkyDust"},
-        {key="bounce", label="Bounce"},
-        {key="tracer", label="Tracer"},
-        {key="atmo", label="Atmo"},
+        {key="orbAura",   label="Orb"},
+        {key="foot",      label="Foot"},
+        {key="ghost",     label="Ghost"},
+        {key="jump",      label="Jump"},
+        {key="skyDust",   label="SkyDust"},
+        {key="bounce",    label="Bounce"},
+        {key="tracer",    label="Tracer"},
+        {key="atmo",      label="Atmo"},
     }
-
     local vizButtons = {}
     local vizScroll = Instance.new("ScrollingFrame")
-    vizScroll.Size = UDim2.new(1, -8, 0, 34)
-    vizScroll.BackgroundColor3 = BG3
+    vizScroll.Size = UDim2.new(1, -8, 0, 32)
+    vizScroll.BackgroundColor3 = Color3.fromRGB(24,24,32)
     vizScroll.BorderSizePixel = 0
-    vizScroll.ScrollBarThickness = 3
-    vizScroll.ScrollBarImageColor3 = A
+    vizScroll.ScrollBarThickness = 0
     vizScroll.ScrollingDirection = Enum.ScrollingDirection.X
     vizScroll.AutomaticCanvasSize = Enum.AutomaticSize.X
     vizScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -2205,15 +2201,19 @@ local function buildMenu()
     renderVizButtons = function()
         for _, e in ipairs(vizButtons) do
             local on = (e.key == activeViz)
-            e.btn.BackgroundColor3 = on and A or BG2
+            e.btn.BackgroundColor3 = on and A or Color3.fromRGB(30,30,40)
             e.btn.TextColor3 = on and Color3.new(1,1,1) or Color3.fromRGB(180,190,210)
+            local g = e.btn:FindFirstChildOfClass("UIGradient")
+            if g then
+                g.Color = on and ColorSequence.new(A, A2) or ColorSequence.new(Color3.fromRGB(30,30,40), Color3.fromRGB(24,24,32))
+            end
         end
     end
 
     for _, v in ipairs(VIZ_LIST) do
         local vb = Instance.new("TextButton")
         vb.Size = UDim2.new(0, 64, 0, 24)
-        vb.BackgroundColor3 = BG2
+        vb.BackgroundColor3 = Color3.fromRGB(30,30,40)
         vb.BorderSizePixel = 0
         vb.AutoButtonColor = false
         vb.Font = Enum.Font.GothamBold
@@ -2221,7 +2221,9 @@ local function buildMenu()
         vb.TextColor3 = Color3.fromRGB(180,190,210)
         vb.Text = v.label
         vb.Parent = vizScroll
-        Instance.new("UICorner", vb).CornerRadius = UDim.new(0, 6)
+        Instance.new("UICorner", vb).CornerRadius = UDim.new(1, 0)
+        local g = Instance.new("UIGradient", vb)
+        g.Color = ColorSequence.new(Color3.fromRGB(30,30,40), Color3.fromRGB(24,24,32))
         vb.MouseButton1Click:Connect(function()
             activeViz = v.key
             renderVizButtons()
@@ -2230,9 +2232,10 @@ local function buildMenu()
     end
     renderVizButtons()
 
+    -- palette row
     local palRow = Instance.new("Frame")
-    palRow.Size = UDim2.new(1, -8, 0, 44)
-    palRow.BackgroundColor3 = BG3
+    palRow.Size = UDim2.new(1, -8, 0, 46)
+    palRow.BackgroundColor3 = Color3.fromRGB(24,24,32)
     palRow.BorderSizePixel = 0
     palRow.Parent = pV
     Instance.new("UICorner", palRow).CornerRadius = UDim.new(0, 10)
@@ -2244,19 +2247,19 @@ local function buildMenu()
     plL.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
     local function rebuildEffect(key)
-        if key=="trail"     and fl.trail     then clTrail(); mkTrail() end
-        if key=="parts"     and fl.parts     then clParts(); mkParts() end
-        if key=="hat"       and fl.hat       then clHat();   mkHat()   end
-        if key=="glow"      and fl.glow      then clGlow();  mkGlow()  end
-        if key=="snow"      and fl.snow      then clSnow();  mkSnow()  end
-        if key=="lightning" and fl.lightning then clLight(); mkLight() end
-        if key=="orbAura"   and fl.orbAura   then clOrb();   mkOrb()   end
-        if key=="foot"      and fl.foot      then clFoot();  mkFoot()  end
-        if key=="ghost"     and fl.ghost     then clGhost(); mkGhost() end
-        if key=="jump"      and fl.jump      then clJump();  mkJump()  end
-        if key=="skyDust"   and fl.skyDust   then clSky();   mkSky()   end
-        if key=="bounce"    and fl.bounce    then clBo();    mkBo()    end
-        if key=="atmo"      and fl.atmo      then clAtmo();  mkAtmo()  end
+        if key=="trail"     and fl.trail     then pcall(clTrail); pcall(mkTrail) end
+        if key=="parts"     and fl.parts     then pcall(clParts); pcall(mkParts) end
+        if key=="hat"       and fl.hat       then pcall(clHat);   pcall(mkHat)   end
+        if key=="glow"      and fl.glow      then pcall(clGlow);  pcall(mkGlow)  end
+        if key=="snow"      and fl.snow      then pcall(clSnow);  pcall(mkSnow)  end
+        if key=="lightning" and fl.lightning then pcall(clLight); pcall(mkLight) end
+        if key=="orbAura"   and fl.orbAura   then pcall(clOrb);   pcall(mkOrb)   end
+        if key=="foot"      and fl.foot      then pcall(clFoot);  pcall(mkFoot)  end
+        if key=="ghost"     and fl.ghost     then pcall(clGhost); pcall(mkGhost) end
+        if key=="jump"      and fl.jump      then pcall(clJump);  pcall(mkJump)  end
+        if key=="skyDust"   and fl.skyDust   then pcall(clSky);   pcall(mkSky)   end
+        if key=="bounce"    and fl.bounce    then pcall(clBo);    pcall(mkBo)    end
+        if key=="atmo"      and fl.atmo      then pcall(clAtmo);  pcall(mkAtmo)  end
     end
 
     for _, p in ipairs(PALETTE) do
@@ -2269,17 +2272,19 @@ local function buildMenu()
         cb.Parent = palRow
         Instance.new("UICorner", cb).CornerRadius = UDim.new(1, 0)
         local cst = Instance.new("UIStroke", cb)
-        cst.Color = Color3.fromRGB(200,200,200); cst.Thickness = 1; cst.Transparency = 0.6
+        cst.Color = Color3.fromRGB(220,220,220); cst.Thickness = 1; cst.Transparency = 0.6
         cb.MouseButton1Click:Connect(function()
             FC[activeViz] = p.c
             rebuildEffect(activeViz)
             notif(activeViz.." → "..p.name, true)
         end)
         cb.MouseEnter:Connect(function()
-            Tween:Create(cb, TweenInfo.new(0.12), {Size=UDim2.new(0,32,0,32)}):Play()
+            Tween:Create(cb, TweenInfo.new(0.15, Enum.EasingStyle.Back), {Size=UDim2.new(0,34,0,34)}):Play()
+            Tween:Create(cst, TweenInfo.new(0.15), {Transparency=0.1}):Play()
         end)
         cb.MouseLeave:Connect(function()
-            Tween:Create(cb, TweenInfo.new(0.12), {Size=UDim2.new(0,28,0,28)}):Play()
+            Tween:Create(cb, TweenInfo.new(0.15, Enum.EasingStyle.Back), {Size=UDim2.new(0,28,0,28)}):Play()
+            Tween:Create(cst, TweenInfo.new(0.15), {Transparency=0.6}):Play()
         end)
     end
 
@@ -2349,11 +2354,19 @@ local function buildMenu()
         main.BackgroundColor3 = BG
         header.BackgroundColor3 = BG2
         tabBar.BackgroundColor3 = BG2
+        glow.BackgroundColor3 = A
+        hg.BackgroundColor3 = A
+        logoDot.BackgroundColor3 = A
+        dotInner.BackgroundColor3 = BG2
         mst.Color = A
         title.TextColor3 = A
         accent.BackgroundColor3 = A
         fadeOverlay.BackgroundColor3 = BG
-        pcall(renderVizButtons)
+        mstGrad.Color = ColorSequence.new(A, A2)
+        dotGrad.Color = ColorSequence.new(A, A2)
+        tGrad.Color = ColorSequence.new(A, A2)
+        hgGrad.Color = ColorSequence.new(A, A2)
+        renderVizButtons()
     end
     for name in pairs(TH) do
         button(pT, name, function() setTheme(name) end)
@@ -2374,7 +2387,7 @@ local function buildMenu()
         end
     end)
 
-    -- floating open button
+    -- ============ FLOATING OPEN BUTTON ============
     local showBtn = Instance.new("TextButton")
     showBtn.Name = "OpenMenu"
     showBtn.Size = UDim2.new(0, 56, 0, 56)
@@ -2388,9 +2401,11 @@ local function buildMenu()
     showBtn.Visible = false
     showBtn.Active = true
     showBtn.Parent = sg
-    Instance.new("UICorner", showBtn).CornerRadius = UDim.new(0, 14)
+    Instance.new("UICorner", showBtn).CornerRadius = UDim.new(1, 0)
     local showStroke = Instance.new("UIStroke", showBtn)
     showStroke.Color = A2; showStroke.Thickness = 1.5; showStroke.Transparency = 0.2
+    local showGrad = Instance.new("UIGradient", showBtn)
+    showGrad.Color = ColorSequence.new(A, A2); showGrad.Rotation = 45
 
     do
         local d, ds, sp
@@ -2454,7 +2469,6 @@ local function buildMenu()
             if main.Visible then hideMenu() else showMenu() end
         end
     end)
-
     UIS.InputBegan:Connect(function(input, gp)
         if gp then return end
         if input.KeyCode == Enum.KeyCode.Escape and main.Visible then
@@ -2467,9 +2481,7 @@ end
 
 local menuGui = buildMenu()
 
--- ============================================================
 -- BIND LISTENER
--- ============================================================
 ADDON.bindConn = UIS.InputBegan:Connect(function(input, gp)
     if bindPicking then
         if input.KeyCode == Enum.KeyCode.Escape then
@@ -2516,9 +2528,7 @@ ADDON.idleConn = LP.Idled:Connect(function()
     end
 end)
 
--- ============================================================
 -- MAIN LOOP
--- ============================================================
 ADDON.hb = RS.Heartbeat:Connect(function()
     if not ADDON.loaded then return end
     pcall(function()
@@ -2595,9 +2605,7 @@ task.spawn(function()
     if MOVE.spin then startSpin() end
 end)
 
--- ============================================================
 -- UNLOAD
--- ============================================================
 ADDON.unload = function()
     ADDON.loaded = false
     SA.enabled=false; KS.enabled=false; KA.on=false
@@ -2632,4 +2640,4 @@ ADDON.unload = function()
     print("[addon] unloaded")
 end
 
-print("[addon] ready · safe fling · color picker · wide menu 520x340")
+print("[addon] ready · pretty menu · per-visual colors")
