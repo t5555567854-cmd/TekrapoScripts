@@ -1,7 +1,8 @@
 --!nocheck
 --!nolint
 -- ============================================================
---  STARWARE v2 + SHAXED AIM + WIDE MENU  (fly fix + hook fix)
+--  STARWARE v2 + SHAXED AIM
+--  safe fling · per-visual color picker · wide menu · fly-fix
 -- ============================================================
 if getgenv().UN_ADDON and getgenv().UN_ADDON.loaded then
     pcall(function() getgenv().UN_ADDON.unload() end)
@@ -145,6 +146,19 @@ local FC = {}
 local SZ = { trail=1.5, parts=1.6, hat=1.4, foot=2.2, jump=4, bounce=0.5,
     orbAura=2.5, lightning=0.7, snow=1.2, glow=0.3, tracer=0.15,
     esp=0.5, ghost=0.3, atmo=0.35, rainbow=0.4, skyDust=1.5, bloom=1.4 }
+
+-- палитра цветов для визуалов
+local PALETTE = {
+    {name="Cyan",   c=Color3.fromRGB(0,220,255)},
+    {name="Purple", c=Color3.fromRGB(160,80,255)},
+    {name="Pink",   c=Color3.fromRGB(255,100,200)},
+    {name="Red",    c=Color3.fromRGB(255,80,80)},
+    {name="Gold",   c=Color3.fromRGB(255,200,60)},
+    {name="Green",  c=Color3.fromRGB(80,220,120)},
+    {name="White",  c=Color3.fromRGB(240,240,240)},
+    {name="Lime",   c=Color3.fromRGB(180,255,80)},
+}
+local activeViz = "trail"
 
 local SID = "rbxassetid://159454299"
 local HEART_MESH = "rbxassetid://6200353"
@@ -386,7 +400,7 @@ local function SA_findQuietSpot(mRoot, myChar)
 end
 
 -- ============================================================
--- WEAPON HOOK  (re-attach aware)
+-- WEAPON HOOK (re-attach aware)
 -- ============================================================
 local WSH={}
 get_ws_fn=function()
@@ -472,7 +486,6 @@ end
 install_hooks=function()
     local cur = get_ws_fn()
     if not cur then return end
-    -- модуль пересоздался → сбрасываем кэш хуков
     if cur ~= WSH.m then
         WSH.m = cur
         WSH.om = nil
@@ -744,9 +757,7 @@ stopNoclip=function()
     table.clear(moveConns.nc)
 end
 
--- ============================================================
--- FLY  (antikick: BodyVelocity, low MaxForce, no per-frame CFrame set)
--- ============================================================
+-- fly antikick
 startFly=function()
     if flyConn then pcall(function() flyConn:Disconnect() end) flyConn=nil end
     if MOVE.fg then pcall(function() MOVE.fg:Destroy() end) MOVE.fg=nil end
@@ -847,9 +858,9 @@ task.spawn(function()
 end)
 
 -- ============================================================
--- TROLL
+-- TROLL (safe + risky)
 -- ============================================================
-local function flingCore(thrp,thum,time)
+local function flingCore(thrp,thum,time,risky)
     local c=LP.Character
     local hrp=c and c:FindFirstChild("HumanoidRootPart"); if not hrp then return false end
     local hum2=c and c:FindFirstChildOfClass("Humanoid"); if not hum2 then return false end
@@ -858,10 +869,27 @@ local function flingCore(thrp,thum,time)
     local cam=workspace.CurrentCamera
     local oldSubj=cam.CameraSubject
     local oldFall=workspace.FallenPartsDestroyHeight
-    pcall(function() workspace.FallenPartsDestroyHeight=0/0 end)
-    pcall(function() cam.CameraSubject=thrp end)
+
     local bv=Instance.new("BodyVelocity")
-    bv.MaxForce=Vector3.new(9e9,9e9,9e9) bv.Velocity=Vector3.zero bv.Parent=hrp
+    bv.Parent=hrp
+    if risky then
+        bv.MaxForce=Vector3.new(9e9,9e9,9e9); bv.P=1250
+        pcall(function() workspace.FallenPartsDestroyHeight=0/0 end)
+        pcall(function() cam.CameraSubject=thrp end)
+    else
+        bv.MaxForce=Vector3.new(3e5,3e5,3e5); bv.P=800
+    end
+    bv.Velocity=Vector3.zero
+
+    local bg
+    if not risky then
+        bg=Instance.new("BodyGyro")
+        bg.P=1e4; bg.D=100
+        bg.MaxTorque=Vector3.new(3e5,3e5,3e5)
+        bg.CFrame=hrp.CFrame
+        bg.Parent=hrp
+    end
+
     local se=hum2:GetStateEnabled(Enum.HumanoidStateType.Seated)
     pcall(function() hum2:SetStateEnabled(Enum.HumanoidStateType.Seated,false) end)
     local t0=os.clock()
@@ -871,26 +899,42 @@ local function flingCore(thrp,thum,time)
         local tv=thrp.Velocity
         if tv.Magnitude>50 and thum then tv=thum.MoveDirection*thum.WalkSpeed end
         local lead=thrp.Position+tv*0.08
-        ang=ang+165
-        local r=ang%360
-        local off
-        if r<90 then off=Vector3.new(0,2.5,0)
-        elseif r<180 then off=Vector3.new(0,-2.5,0)
-        elseif r<270 then off=Vector3.new(2.5,0,0)
-        else off=Vector3.new(-2.5,0,0) end
-        local cf=CFrame.new(lead+off)*CFrame.Angles(math.rad(ang),0,0)
-        pcall(function()
-            hrp.CFrame=cf
-            c:SetPrimaryPartCFrame(cf)
-            hrp.Velocity=Vector3.new(9e8,9e8*10,9e8)
-            hrp.RotVelocity=Vector3.new(9e9,9e9,9e9)
-        end)
+
+        if risky then
+            ang=ang+165
+            local r=ang%360
+            local off
+            if r<90 then off=Vector3.new(0,2.5,0)
+            elseif r<180 then off=Vector3.new(0,-2.5,0)
+            elseif r<270 then off=Vector3.new(2.5,0,0)
+            else off=Vector3.new(-2.5,0,0) end
+            local cf=CFrame.new(lead+off)*CFrame.Angles(math.rad(ang),0,0)
+            pcall(function()
+                hrp.CFrame=cf
+                c:SetPrimaryPartCFrame(cf)
+                hrp.Velocity=Vector3.new(9e8,9e8*10,9e8)
+                hrp.RotVelocity=Vector3.new(9e9,9e9,9e9)
+            end)
+        else
+            -- безопасный: BodyVelocity тянет к цели, BodyGyro смотрит на цель
+            local toT=lead-hrp.Position
+            if toT.Magnitude>0.1 then
+                bv.Velocity=toT.Unit*math.min(toT.Magnitude*6,120)
+            else
+                bv.Velocity=Vector3.zero
+            end
+            if bg and bg.Parent then
+                bg.CFrame=CFrame.new(hrp.Position, lead)
+            end
+        end
         RS.Heartbeat:Wait()
     end
+
     if bv.Parent then bv:Destroy() end
+    if bg and bg.Parent then bg:Destroy() end
     pcall(function() hum2:SetStateEnabled(Enum.HumanoidStateType.Seated,se) end)
     pcall(function() cam.CameraSubject=hum2 end)
-    if hrp.Parent then
+    if risky and hrp.Parent then
         pcall(function()
             hrp.CFrame=orig
             c:SetPrimaryPartCFrame(orig)
@@ -898,20 +942,22 @@ local function flingCore(thrp,thum,time)
             hrp.Velocity=Vector3.zero
         end)
     end
-    pcall(function() workspace.FallenPartsDestroyHeight=oldFall end)
-    if oldSubj then pcall(function() cam.CameraSubject=oldSubj end) end
+    if risky then
+        pcall(function() workspace.FallenPartsDestroyHeight=oldFall end)
+        if oldSubj then pcall(function() cam.CameraSubject=oldSubj end) end
+    end
     return true
 end
-local function flingTarget(target)
+local function flingTarget(target,risky)
     if TROLL.flinging then return end
     local tchar=target and target.Character; if not tchar then return end
     local thrp=tchar:FindFirstChild("HumanoidRootPart") or tchar:FindFirstChild("Head"); if not thrp then return end
     local thum=tchar:FindFirstChildOfClass("Humanoid")
     TROLL.flinging=true
-    task.spawn(function() flingCore(thrp,thum,2.2); TROLL.flinging=false end)
+    task.spawn(function() flingCore(thrp,thum,2.2,risky); TROLL.flinging=false end)
 end
-local function flingNearest() local t=nearest_player(); if t then flingTarget(t) end end
-local function flingAll()
+local function flingNearest(risky) local t=nearest_player(); if t then flingTarget(t,risky) end end
+local function flingAll(risky)
     if TROLL.flinging then return end
     TROLL.flinging=true
     task.spawn(function()
@@ -919,7 +965,7 @@ local function flingAll()
             if p~=LP and p.Character then
                 local thrp=p.Character:FindFirstChild("HumanoidRootPart") or p.Character:FindFirstChild("Head")
                 local thum=p.Character:FindFirstChildOfClass("Humanoid")
-                if thrp and HRP() then flingCore(thrp,thum,1.5); task.wait(0.15) end
+                if thrp and HRP() then flingCore(thrp,thum,1.5,risky); task.wait(0.15) end
             end
         end
         TROLL.flinging=false
@@ -1564,7 +1610,7 @@ local function killAll()
 end
 
 -- ============================================================
--- MENU  (520 x 340)
+-- MENU (520 x 340)
 -- ============================================================
 local function buildMenu()
     local sg = Instance.new("ScreenGui")
@@ -2062,20 +2108,25 @@ local function buildMenu()
 
     -- ============ TROLL ============
     local pTroll = addTab("Troll", 3)
-    button(pTroll, "Fling Nearest", flingNearest)
-    button(pTroll, "Fling All", flingAll)
+    section(pTroll, "Fling SAFE (не кикает)")
+    button(pTroll, "Fling Nearest", function() flingNearest(false) end)
+    button(pTroll, "Fling All", function() flingAll(false) end)
     button(pTroll, "Fling Murderer", function()
         for _,p in ipairs(Players:GetPlayers()) do
-            if p~=LP and alive(p) and cachedRole(p)=="m" then flingTarget(p); return end
+            if p~=LP and alive(p) and cachedRole(p)=="m" then flingTarget(p,false); return end
         end
         notif("no murderer", false)
     end)
     button(pTroll, "Fling Sheriff", function()
         for _,p in ipairs(Players:GetPlayers()) do
-            if p~=LP and alive(p) and cachedRole(p)=="s" then flingTarget(p); return end
+            if p~=LP and alive(p) and cachedRole(p)=="s" then flingTarget(p,false); return end
         end
         notif("no sheriff", false)
     end)
+    section(pTroll, "Fling RISKY (кикает)")
+    button(pTroll, "Risky Fling Nearest", function() flingNearest(true) end)
+    button(pTroll, "Risky Fling All", function() flingAll(true) end)
+    section(pTroll, "Control")
     button(pTroll, "Stop Troll", stopTroll)
     button(pTroll, "TP to Murder", function()
         for _,p in ipairs(Players:GetPlayers()) do
@@ -2111,6 +2162,127 @@ local function buildMenu()
 
     -- ============ VISUALS ============
     local pV = addTab("Visuals", 4)
+    section(pV, "Color Picker")
+
+    local VIZ_LIST = {
+        {key="trail", label="Trail"},
+        {key="parts", label="Aura"},
+        {key="hat", label="Hat"},
+        {key="glow", label="Glow"},
+        {key="snow", label="Snow"},
+        {key="lightning", label="Light"},
+        {key="orbAura", label="Orb"},
+        {key="foot", label="Foot"},
+        {key="ghost", label="Ghost"},
+        {key="jump", label="Jump"},
+        {key="skyDust", label="SkyDust"},
+        {key="bounce", label="Bounce"},
+        {key="tracer", label="Tracer"},
+        {key="atmo", label="Atmo"},
+    }
+
+    local vizButtons = {}
+    local vizScroll = Instance.new("ScrollingFrame")
+    vizScroll.Size = UDim2.new(1, -8, 0, 34)
+    vizScroll.BackgroundColor3 = BG3
+    vizScroll.BorderSizePixel = 0
+    vizScroll.ScrollBarThickness = 3
+    vizScroll.ScrollBarImageColor3 = A
+    vizScroll.ScrollingDirection = Enum.ScrollingDirection.X
+    vizScroll.AutomaticCanvasSize = Enum.AutomaticSize.X
+    vizScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    vizScroll.Parent = pV
+    Instance.new("UICorner", vizScroll).CornerRadius = UDim.new(0, 8)
+    local vsl = Instance.new("UIListLayout", vizScroll)
+    vsl.FillDirection = Enum.FillDirection.Horizontal
+    vsl.Padding = UDim.new(0, 4)
+    vsl.SortOrder = Enum.SortOrder.LayoutOrder
+    vsl.VerticalAlignment = Enum.VerticalAlignment.Center
+    local vsp = Instance.new("UIPadding", vizScroll)
+    vsp.PaddingLeft = UDim.new(0, 6); vsp.PaddingRight = UDim.new(0, 6)
+
+    local renderVizButtons
+    renderVizButtons = function()
+        for _, e in ipairs(vizButtons) do
+            local on = (e.key == activeViz)
+            e.btn.BackgroundColor3 = on and A or BG2
+            e.btn.TextColor3 = on and Color3.new(1,1,1) or Color3.fromRGB(180,190,210)
+        end
+    end
+
+    for _, v in ipairs(VIZ_LIST) do
+        local vb = Instance.new("TextButton")
+        vb.Size = UDim2.new(0, 64, 0, 24)
+        vb.BackgroundColor3 = BG2
+        vb.BorderSizePixel = 0
+        vb.AutoButtonColor = false
+        vb.Font = Enum.Font.GothamBold
+        vb.TextSize = 11
+        vb.TextColor3 = Color3.fromRGB(180,190,210)
+        vb.Text = v.label
+        vb.Parent = vizScroll
+        Instance.new("UICorner", vb).CornerRadius = UDim.new(0, 6)
+        vb.MouseButton1Click:Connect(function()
+            activeViz = v.key
+            renderVizButtons()
+        end)
+        vizButtons[#vizButtons+1] = {key=v.key, btn=vb}
+    end
+    renderVizButtons()
+
+    local palRow = Instance.new("Frame")
+    palRow.Size = UDim2.new(1, -8, 0, 44)
+    palRow.BackgroundColor3 = BG3
+    palRow.BorderSizePixel = 0
+    palRow.Parent = pV
+    Instance.new("UICorner", palRow).CornerRadius = UDim.new(0, 10)
+    local plL = Instance.new("UIListLayout", palRow)
+    plL.FillDirection = Enum.FillDirection.Horizontal
+    plL.Padding = UDim.new(0, 8)
+    plL.SortOrder = Enum.SortOrder.LayoutOrder
+    plL.VerticalAlignment = Enum.VerticalAlignment.Center
+    plL.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+    local function rebuildEffect(key)
+        if key=="trail"     and fl.trail     then clTrail(); mkTrail() end
+        if key=="parts"     and fl.parts     then clParts(); mkParts() end
+        if key=="hat"       and fl.hat       then clHat();   mkHat()   end
+        if key=="glow"      and fl.glow      then clGlow();  mkGlow()  end
+        if key=="snow"      and fl.snow      then clSnow();  mkSnow()  end
+        if key=="lightning" and fl.lightning then clLight(); mkLight() end
+        if key=="orbAura"   and fl.orbAura   then clOrb();   mkOrb()   end
+        if key=="foot"      and fl.foot      then clFoot();  mkFoot()  end
+        if key=="ghost"     and fl.ghost     then clGhost(); mkGhost() end
+        if key=="jump"      and fl.jump      then clJump();  mkJump()  end
+        if key=="skyDust"   and fl.skyDust   then clSky();   mkSky()   end
+        if key=="bounce"    and fl.bounce    then clBo();    mkBo()    end
+        if key=="atmo"      and fl.atmo      then clAtmo();  mkAtmo()  end
+    end
+
+    for _, p in ipairs(PALETTE) do
+        local cb = Instance.new("TextButton")
+        cb.Size = UDim2.new(0, 28, 0, 28)
+        cb.BackgroundColor3 = p.c
+        cb.BorderSizePixel = 0
+        cb.Text = ""
+        cb.AutoButtonColor = false
+        cb.Parent = palRow
+        Instance.new("UICorner", cb).CornerRadius = UDim.new(1, 0)
+        local cst = Instance.new("UIStroke", cb)
+        cst.Color = Color3.fromRGB(200,200,200); cst.Thickness = 1; cst.Transparency = 0.6
+        cb.MouseButton1Click:Connect(function()
+            FC[activeViz] = p.c
+            rebuildEffect(activeViz)
+            notif(activeViz.." → "..p.name, true)
+        end)
+        cb.MouseEnter:Connect(function()
+            Tween:Create(cb, TweenInfo.new(0.12), {Size=UDim2.new(0,32,0,32)}):Play()
+        end)
+        cb.MouseLeave:Connect(function()
+            Tween:Create(cb, TweenInfo.new(0.12), {Size=UDim2.new(0,28,0,28)}):Play()
+        end)
+    end
+
     section(pV, "Character")
     toggle(pV, "Neon Trail",  function() return fl.trail end, function(v) fl.trail=v; if v then mkTrail() else clTrail() end end)
     toggle(pV, "China Hat",   function() return fl.hat end,   function(v) fl.hat=v;   if v then mkHat()  else clHat()  end end)
@@ -2181,6 +2353,7 @@ local function buildMenu()
         title.TextColor3 = A
         accent.BackgroundColor3 = A
         fadeOverlay.BackgroundColor3 = BG
+        pcall(renderVizButtons)
     end
     for name in pairs(TH) do
         button(pT, name, function() setTheme(name) end)
@@ -2201,7 +2374,7 @@ local function buildMenu()
         end
     end)
 
-    -- ============ FLOATING OPEN BUTTON ============
+    -- floating open button
     local showBtn = Instance.new("TextButton")
     showBtn.Name = "OpenMenu"
     showBtn.Size = UDim2.new(0, 56, 0, 56)
@@ -2459,4 +2632,4 @@ ADDON.unload = function()
     print("[addon] unloaded")
 end
 
-print("[addon] ready · fly-fix · hook-reconnect · wide menu")
+print("[addon] ready · safe fling · color picker · wide menu 520x340")
