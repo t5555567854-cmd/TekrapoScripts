@@ -1,7 +1,7 @@
 --!nocheck
 --!nolint
 -- ============================================================
---  STARWARE v2 + SHAXED AIM + WIDE MENU
+--  STARWARE v2 + SHAXED AIM + WIDE MENU  (fly fix + hook fix)
 -- ============================================================
 if getgenv().UN_ADDON and getgenv().UN_ADDON.loaded then
     pcall(function() getgenv().UN_ADDON.unload() end)
@@ -386,13 +386,12 @@ local function SA_findQuietSpot(mRoot, myChar)
 end
 
 -- ============================================================
--- WEAPON HOOK
+-- WEAPON HOOK  (re-attach aware)
 -- ============================================================
 local WSH={}
 get_ws_fn=function()
-    if WSH.m then return WSH.m end
     local ok,m=pcall(function() return require(Replicated:WaitForChild("ClientServices"):WaitForChild("WeaponService")) end)
-    if ok and type(m)=="table" then WSH.m=m end
+    if ok and type(m)=="table" then return m end
     return WSH.m
 end
 
@@ -405,6 +404,10 @@ end
 
 local function resolve()
     if not SA.enabled then return nil end
+    if not target_p or not target_p.Character then
+        pcall(refresh_target)
+        if not target_p then return nil end
+    end
     if not target_part or not target_part.Parent then pcall(refresh_target) end
     if not target_part or not target_part.Parent then
         local c = target_char
@@ -467,19 +470,27 @@ local function resolve()
 end
 
 install_hooks=function()
-    local m=get_ws_fn(); if not m then return end
-    pcall(function() setreadonly(m,false) end)
-    if type(m.GetMouseTargetCFrame)=="function" and not WSH.om then
-        WSH.om=m.GetMouseTargetCFrame
-        m.GetMouseTargetCFrame=function(self,...)
+    local cur = get_ws_fn()
+    if not cur then return end
+    -- модуль пересоздался → сбрасываем кэш хуков
+    if cur ~= WSH.m then
+        WSH.m = cur
+        WSH.om = nil
+        WSH.os = nil
+    end
+    if WSH.om and WSH.os then return end
+    pcall(function() setreadonly(cur,false) end)
+    if type(cur.GetMouseTargetCFrame)=="function" and not WSH.om then
+        WSH.om=cur.GetMouseTargetCFrame
+        cur.GetMouseTargetCFrame=function(self,...)
             local pt=resolve()
             if pt then return CFrame.new(pt) end
             return WSH.om(self,...)
         end
     end
-    if type(m.GetTargetPosition)=="function" and not WSH.os then
-        WSH.os=m.GetTargetPosition
-        m.GetTargetPosition=function(self,x,y,...)
+    if type(cur.GetTargetPosition)=="function" and not WSH.os then
+        WSH.os=cur.GetTargetPosition
+        cur.GetTargetPosition=function(self,x,y,...)
             local pt=resolve()
             if pt then return pt end
             return WSH.os(self,x,y,...)
@@ -732,23 +743,36 @@ stopNoclip=function()
     for p,was in pairs(moveConns.nc) do if p and p.Parent then pcall(function() p.CanCollide=was end) end end
     table.clear(moveConns.nc)
 end
+
+-- ============================================================
+-- FLY  (antikick: BodyVelocity, low MaxForce, no per-frame CFrame set)
+-- ============================================================
 startFly=function()
     if flyConn then pcall(function() flyConn:Disconnect() end) flyConn=nil end
     if MOVE.fg then pcall(function() MOVE.fg:Destroy() end) MOVE.fg=nil end
     if MOVE.fv then pcall(function() MOVE.fv:Destroy() end) MOVE.fv=nil end
     local c0=LP.Character; local hrp0=c0 and c0:FindFirstChild("HumanoidRootPart"); if not hrp0 then return end
+    local h0=c0:FindFirstChildOfClass("Humanoid"); if not h0 then return end
+    pcall(function() h0.PlatformStand=true end)
+
     MOVE.fg=Instance.new("BodyGyro")
-    MOVE.fg.P=9e4 MOVE.fg.D=500 MOVE.fg.MaxTorque=Vector3.new(9e9,9e9,9e9)
-    MOVE.fg.CFrame=workspace.CurrentCamera.CFrame MOVE.fg.Parent=hrp0
+    MOVE.fg.P=1e4
+    MOVE.fg.D=100
+    MOVE.fg.MaxTorque=Vector3.new(4e5,4e5,4e5)
+    MOVE.fg.CFrame=workspace.CurrentCamera.CFrame
+    MOVE.fg.Parent=hrp0
+
     MOVE.fv=Instance.new("BodyVelocity")
-    MOVE.fv.MaxForce=Vector3.new(9e9,9e9,9e9) MOVE.fv.Velocity=Vector3.zero MOVE.fv.Parent=hrp0
+    MOVE.fv.MaxForce=Vector3.new(4e5,4e5,4e5)
+    MOVE.fv.Velocity=Vector3.zero
+    MOVE.fv.P=1250
+    MOVE.fv.Parent=hrp0
+
     flyConn=RS.RenderStepped:Connect(function(dt)
         if not MOVE.fly or not ADDON.loaded then return end
         local c=LP.Character; if not c then return end
         local hrp=c:FindFirstChild("HumanoidRootPart")
-        local h=c:FindFirstChildOfClass("Humanoid")
-        if not hrp or not h then return end
-        pcall(function() h.PlatformStand=true end)
+        if not hrp or not MOVE.fv or not MOVE.fv.Parent then return end
         local cam=workspace.CurrentCamera
         if MOVE.fg and MOVE.fg.Parent then MOVE.fg.CFrame=cam.CFrame end
         local dir=Vector3.zero
@@ -760,9 +784,11 @@ startFly=function()
         if UIS:IsKeyDown(Enum.KeyCode.D) then dir=dir+rgt end
         if UIS:IsKeyDown(Enum.KeyCode.Space) then dir=dir+Vector3.new(0,1,0) end
         if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then dir=dir-Vector3.new(0,1,0) end
-        local step=math.min(dt or 0.016,0.05)
-        if dir.Magnitude>0.1 then hrp.CFrame=hrp.CFrame+dir.Unit*MOVE.flySpeed*step end
-        pcall(function() hrp.RotVelocity=Vector3.zero; hrp.AssemblyAngularVelocity=Vector3.zero end)
+        if dir.Magnitude>0.1 then
+            MOVE.fv.Velocity=dir.Unit*MOVE.flySpeed
+        else
+            MOVE.fv.Velocity=Vector3.zero
+        end
     end)
 end
 stopFly=function()
@@ -775,6 +801,7 @@ stopFly=function()
         if h then pcall(function() h.PlatformStand=false end) pcall(function() h:ChangeState(Enum.HumanoidStateType.GettingUp) end) end
     end
 end
+
 startSpin=function()
     if spinConn then return end
     spinConn=RS.RenderStepped:Connect(function(dt)
@@ -1216,7 +1243,8 @@ local function clOrb()
     local c=LP.Character
     if c then
         local hrp=c:FindFirstChild("HumanoidRootPart")
-        if hrp then local f=hrp:FindFirstChild("sOrbs"); if f then f:Destroy() end end    end
+        if hrp then local f=hrp:FindFirstChild("sOrbs"); if f then f:Destroy() end end
+    end
 end
 local function mkGhost()
     if ghC then return end
@@ -1536,7 +1564,7 @@ local function killAll()
 end
 
 -- ============================================================
--- MENU  (520 x 340 — low and wide)
+-- MENU  (520 x 340)
 -- ============================================================
 local function buildMenu()
     local sg = Instance.new("ScreenGui")
@@ -1624,7 +1652,6 @@ local function buildMenu()
     accent.BorderSizePixel = 0
     local accentGrad = Instance.new("UIGradient", accent)
 
-    -- DRAG
     do
         local dragging, dragStart, startPos
         local function inFrame(pos, frame)
@@ -1873,7 +1900,6 @@ local function buildMenu()
         return f, upd
     end
 
-    -- Tab layout — wide: две колонки в каждой странице
     local tabs = {}
     local currentBtn = nil
     local function addTab(name, order)
@@ -2433,4 +2459,4 @@ ADDON.unload = function()
     print("[addon] unloaded")
 end
 
-print("[addon] ready · shaxed aim · wide menu 520x340")
+print("[addon] ready · fly-fix · hook-reconnect · wide menu")
