@@ -1,5 +1,5 @@
 -- ============================================================
--- SHITARO v5 — shitaro-style menu, full aim + esp
+-- SHITARO v6 — shitaro-style menu + full features
 -- ============================================================
 
 if not LPH_OBFUSCATED then
@@ -29,7 +29,7 @@ local CAM = workspace.CurrentCamera
 local WS  = workspace
 
 -- ============================================================
--- gui attach
+-- attach gui
 -- ============================================================
 local function attach_gui(gui)
     if not gui then return nil end
@@ -48,46 +48,26 @@ local function attach_gui(gui)
 end
 
 -- ============================================================
--- config
+-- theme (shitaro palette)
 -- ============================================================
-local C = {
-    accent = Color3.fromRGB(0, 170, 255),
-    aim=false, predict=true, backtrack=false, bt_win=100,
-    auto=false, auto_delay=0, force=false, stand_off=15,
-    priority="murderer", range=300,
-    aura=false, aura_dist=30, kill_all=false,
-    tracer=false, tracer_col=Color3.fromRGB(133,220,255), tracer_dur=1,
-    self_chams=false, self_chams_type="ForceField", self_col=Color3.fromRGB(0,200,255),
-    self_esp=false, self_esp_col=Color3.fromRGB(0,200,255),
-    esp=false, esp_box=false, esp_box_col=Color3.fromRGB(255,60,60),
-    esp_name=false, esp_name_col=Color3.fromRGB(255,255,255),
-    esp_dist=false, esp_dist_col=Color3.fromRGB(200,200,200),
-    esp_hp=false, esp_hp_col=Color3.fromRGB(60,220,60),
-    esp_skel=false, esp_skel_col=Color3.fromRGB(255,255,255),
-    esp_chams=false,
-    esp_col_mur=Color3.fromRGB(255,60,60),
-    esp_col_shf=Color3.fromRGB(0,153,255),
-    esp_col_inn=Color3.fromRGB(200,200,200),
-    gun_esp=false, gun_hl=false, gun_hl_col=Color3.fromRGB(255,255,255),
-    fly=false, fly_spd=60, noclip=false, bhop=false, bhop_pow=40,
-    inf_jump=false,
-    ws_on=false, ws_val=40, jp_on=false, jp_val=80,
-    fake=false, fake_x=9, fake_y=9, fake_z=9,
-    vs_on=false, vs_type="low",
-    fullbright=false, fog=false, fog_col=Color3.fromRGB(192,192,192),
-    fog_start=0, fog_end=1000,
-    time_on=false, time_val=12,
-    skybox_on=false, skybox="Jungle",
-    ambient=false, ambient_col=Color3.fromRGB(128,128,128),
-    exposure=false, exposure_val=0,
-    cross=false, cross_gap=4, cross_len=8, cross_th=2,
-    cross_col=Color3.fromRGB(255,255,255),
-    korblox=false, headless=false,
-    alert=false, alert_miss=false, alert_kill=false,
-    show_fov=false, fov_r=120,
-    spec=false, headsit=false, bang=false, bang_speed=3, looptp=false,
-    fling_targets=false, fling_vel=false, kill_targets=false,
-    tp_x=0, tp_y=0, tp_z=0,
+local T = {
+    bg         = Color3.fromRGB(11, 11, 13),
+    header     = Color3.fromRGB(14, 14, 17),
+    sidebar    = Color3.fromRGB(14, 14, 17),
+    panel      = Color3.fromRGB(17, 17, 21),
+    card       = Color3.fromRGB(19, 19, 24),
+    card_head  = Color3.fromRGB(23, 23, 28),
+    row        = Color3.fromRGB(22, 22, 27),
+    row_hover  = Color3.fromRGB(26, 26, 32),
+    border     = Color3.fromRGB(32, 32, 38),
+    border2    = Color3.fromRGB(44, 44, 52),
+    text       = Color3.fromRGB(228, 228, 234),
+    text_sub   = Color3.fromRGB(150, 150, 162),
+    muted      = Color3.fromRGB(100, 100, 112),
+    dim        = Color3.fromRGB(70, 70, 80),
+    accent     = Color3.fromRGB(133, 220, 255),
+    accent_dk  = Color3.fromRGB(90, 170, 205),
+    track      = Color3.fromRGB(38, 38, 46),
 }
 
 -- ============================================================
@@ -100,253 +80,243 @@ local function notify(text, dur)
     if not attach_gui(gui) then return end
 
     local f = Instance.new("Frame")
-    f.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
+    f.BackgroundColor3 = T.card
     f.BorderSizePixel = 0
-    f.Size = UDim2.fromOffset(300, 56)
-    f.Position = UDim2.new(1, -320, 0, 60)
+    f.Size = UDim2.fromOffset(280, 50)
+    f.Position = UDim2.new(1, -300, 0, 60)
     f.Parent = gui
     local uc = Instance.new("UICorner"); uc.CornerRadius = UDim.new(0, 8); uc.Parent = f
-    local st = Instance.new("UIStroke"); st.Color = C.accent; st.Thickness = 1.5; st.Transparency = 0.3; st.Parent = f
-
-    local bar = Instance.new("Frame")
-    bar.BackgroundColor3 = C.accent
-    bar.BorderSizePixel = 0
-    bar.Size = UDim2.new(0, 3, 1, 0)
-    bar.Parent = f
-    local buc = Instance.new("UICorner"); buc.CornerRadius = UDim.new(0, 8); buc.Parent = bar
-
-    local icon = Instance.new("TextLabel")
-    icon.BackgroundTransparency = 1
-    icon.Size = UDim2.fromOffset(32, 32)
-    icon.Position = UDim2.fromOffset(14, 12)
-    icon.Font = Enum.Font.GothamBold
-    icon.Text = "!"
-    icon.TextColor3 = C.accent
-    icon.TextSize = 20
-    icon.Parent = f
+    local st = Instance.new("UIStroke"); st.Color = T.border2; st.Thickness = 1; st.Parent = f
+    local acc = Instance.new("Frame")
+    acc.BackgroundColor3 = T.accent; acc.BorderSizePixel = 0
+    acc.Size = UDim2.new(0, 3, 1, -12); acc.Position = UDim2.fromOffset(0, 6)
+    acc.Parent = f
+    local auc = Instance.new("UICorner"); auc.CornerRadius = UDim.new(1, 0); auc.Parent = acc
 
     local t = Instance.new("TextLabel")
     t.BackgroundTransparency = 1
-    t.Size = UDim2.new(1, -60, 1, 0)
-    t.Position = UDim2.fromOffset(48, 0)
+    t.Size = UDim2.new(1, -24, 1, 0)
+    t.Position = UDim2.fromOffset(14, 0)
     t.Font = Enum.Font.Gotham
     t.Text = text
-    t.TextColor3 = Color3.fromRGB(220, 220, 230)
+    t.TextColor3 = T.text
     t.TextSize = 13
     t.TextXAlignment = Enum.TextXAlignment.Left
     t.TextWrapped = true
     t.Parent = f
 
     pcall(function()
-        TweenService:Create(f, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {Position = UDim2.new(1, -320, 0, 72)}):Play()
+        TweenService:Create(f, TweenInfo.new(0.22, Enum.EasingStyle.Quart), {Position = UDim2.new(1, -300, 0, 72)}):Play()
     end)
     task.delay(dur, function()
         pcall(function()
-            TweenService:Create(f, TweenInfo.new(0.3), {BackgroundTransparency = 1, Position = UDim2.new(1, -280, 0, 72)}):Play()
-            for _, d in ipairs(f:GetDescendants()) do
-                if d:IsA("TextLabel") then TweenService:Create(d, TweenInfo.new(0.3), {TextTransparency = 1}):Play() end
-                if d:IsA("Frame") or d:IsA("UIStroke") then pcall(function() TweenService:Create(d, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play() end) end
-            end
+            TweenService:Create(f, TweenInfo.new(0.28), {BackgroundTransparency = 1, Position = UDim2.new(1, -280, 0, 72)}):Play()
+            TweenService:Create(t, TweenInfo.new(0.28), {TextTransparency = 1}):Play()
+            TweenService:Create(st, TweenInfo.new(0.28), {Transparency = 1}):Play()
+            TweenService:Create(acc, TweenInfo.new(0.28), {BackgroundTransparency = 1}):Play()
         end)
-        task.wait(0.4)
+        task.wait(0.35)
         pcall(function() gui:Destroy() end)
     end)
 end
 
 -- ============================================================
--- UI LIBRARY (shitaro-style)
+-- UI LIBRARY — shitaro style
 -- ============================================================
 local UI = {}
 UI.__index = UI
 
-local ICON_MAP = {
-    aim = "◎", murder = "⚔", tracer = "═", chams = "▣",
-    esp = "◈", player = "☻", world = "◐", target = "◉",
-    misc = "⚙", info = "i",
+local TAB_ICONS = {
+    game     = "◉",
+    murder   = "⚔",
+    aim      = "◎",
+    esp      = "◈",
+    visuals  = "👁",
+    player   = "☻",
+    tracer   = "═",
+    chams    = "▣",
+    target   = "⌖",
+    misc     = "⚙",
+    world    = "◐",
+    skins    = "◆",
+    config   = "⚒",
 }
 
-local function new_icon(sym, color, size)
-    local l = Instance.new("TextLabel")
-    l.BackgroundTransparency = 1
-    l.Size = UDim2.fromOffset(size or 24, size or 24)
-    l.Font = Enum.Font.GothamBold
-    l.Text = sym or "?"
-    l.TextColor3 = color or Color3.fromRGB(200, 200, 210)
-    l.TextSize = (size or 24) * 0.75
-    l.Parent = nil
-    return l
-end
-
-function UI.new(title)
+function UI.new(cfg)
+    cfg = cfg or {}
     local self = setmetatable({}, UI)
-    self.title = title or "SHITARO"
+    self.title = cfg.title or "SHITARO"
     self.enabled = true
-    self.key = Enum.KeyCode.RightShift
+    self.key = Enum.KeyCode.Insert
     self.tabs = {}
     self.tab = nil
     self.mobile = UserInputService.TouchEnabled and true or false
-    self.conns = {}
-
-    if self.mobile then
-        self.size = Vector2.new(520, 400)
-    else
-        self.size = Vector2.new(620, 440)
-    end
 
     local vp = CAM and CAM.ViewportSize or Vector2.new(1280, 720)
-    if self.mobile then
-        self.size = Vector2.new(math.min(vp.X - 20, 560), math.min(vp.Y - 80, 460))
-        self.pos = Vector2.new((vp.X - self.size.X) / 2, 40)
-    else
-        self.pos = Vector2.new((vp.X - self.size.X) / 2, 80)
-    end
+    self.size = Vector2.new(math.min(vp.X - 40, 780), math.min(vp.Y - 80, 460))
+    self.pos = Vector2.new((vp.X - self.size.X) / 2, math.max(20, (vp.Y - self.size.Y) / 2 - 40))
 
     self.ok, self.err = pcall(function() self:_build() end)
-    if not self.ok then warn("[SHITARO] UI:", self.err) end
+    if not self.ok then warn("[SHITARO UI]", self.err) end
     return self
 end
 
 function UI:_build()
     self.frame = Instance.new("ScreenGui")
-    self.frame.Name="\0"; self.frame.ResetOnSpawn=false; self.frame.IgnoreGuiInset=true
+    self.frame.Name = "\0"; self.frame.ResetOnSpawn = false
+    self.frame.IgnoreGuiInset = true
     self.frame.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     self.frame.DisplayOrder = 999
-    if not attach_gui(self.frame) then error("attach") end
+    if not attach_gui(self.frame) then error("attach fail") end
 
+    -- WINDOW
     self.win = Instance.new("Frame")
-    self.win.BackgroundColor3 = Color3.fromRGB(14, 14, 17)
+    self.win.BackgroundColor3 = T.bg
     self.win.BorderSizePixel = 0
     self.win.Position = UDim2.fromOffset(self.pos.X, self.pos.Y)
     self.win.Size = UDim2.fromOffset(self.size.X, self.size.Y)
     self.win.Active = true
     self.win.Parent = self.frame
-    local uc = Instance.new("UICorner"); uc.CornerRadius = UDim.new(0, 12); uc.Parent = self.win
-    local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(40, 40, 48); st.Thickness = 1.5; st.Parent = self.win
+    local wuc = Instance.new("UICorner"); wuc.CornerRadius = UDim.new(0, 10); wuc.Parent = self.win
+    local wst = Instance.new("UIStroke"); wst.Color = T.border2; wst.Thickness = 1; wst.Parent = self.win
 
-    -- glow accent line at top
-    local glow = Instance.new("Frame")
-    glow.BackgroundColor3 = C.accent
-    glow.BorderSizePixel = 0
-    glow.Size = UDim2.new(1, -24, 0, 2)
-    glow.Position = UDim2.fromOffset(12, 1)
-    glow.Parent = self.win
-    local guc = Instance.new("UICorner"); guc.CornerRadius = UDim.new(1, 0); guc.Parent = glow
+    -- HEADER
+    local hh = 34
+    self.hdr = Instance.new("Frame")
+    self.hdr.BackgroundColor3 = T.header
+    self.hdr.BorderSizePixel = 0
+    self.hdr.Size = UDim2.new(1, 0, 0, hh)
+    self.hdr.Active = true
+    self.hdr.Parent = self.win
+    local huc = Instance.new("UICorner"); huc.CornerRadius = UDim.new(0, 10); huc.Parent = self.hdr
+    local hcover = Instance.new("Frame")
+    hcover.BackgroundColor3 = T.header; hcover.BorderSizePixel = 0
+    hcover.Size = UDim2.new(1, 0, 0, 12); hcover.Position = UDim2.new(0, 0, 1, -12)
+    hcover.Parent = self.hdr
 
-    -- title bar
-    local titleH = 40
-    self.tb = Instance.new("Frame")
-    self.tb.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
-    self.tb.BorderSizePixel = 0
-    self.tb.Size = UDim2.new(1, 0, 0, titleH)
-    self.tb.Active = true
-    self.tb.Parent = self.win
-    local tuc = Instance.new("UICorner"); tuc.CornerRadius = UDim.new(0, 12); tuc.Parent = self.tb
+    local hline = Instance.new("Frame")
+    hline.BackgroundColor3 = T.border; hline.BorderSizePixel = 0
+    hline.Size = UDim2.new(1, 0, 0, 1); hline.Position = UDim2.new(0, 0, 1, -1)
+    hline.Parent = self.hdr
 
+    -- logo
     local logo = Instance.new("TextLabel")
     logo.BackgroundTransparency = 1
-    logo.Size = UDim2.fromOffset(28, 28)
-    logo.Position = UDim2.fromOffset(14, 6)
+    logo.Size = UDim2.fromOffset(24, hh)
+    logo.Position = UDim2.fromOffset(12, 0)
     logo.Font = Enum.Font.GothamBlack
     logo.Text = "S"
-    logo.TextColor3 = C.accent
-    logo.TextSize = 22
-    logo.TextXAlignment = Enum.TextXAlignment.Center
-    logo.Parent = self.tb
+    logo.TextColor3 = T.accent
+    logo.TextSize = 16
+    logo.Parent = self.hdr
 
     local title = Instance.new("TextLabel")
     title.BackgroundTransparency = 1
-    title.Size = UDim2.new(1, -120, 1, 0)
-    title.Position = UDim2.fromOffset(46, 0)
+    title.Size = UDim2.new(1, -100, 1, 0)
+    title.Position = UDim2.fromOffset(34, 0)
     title.Font = Enum.Font.GothamBold
     title.Text = self.title
-    title.TextColor3 = Color3.fromRGB(240, 240, 248)
-    title.TextSize = 14
+    title.TextColor3 = T.text
+    title.TextSize = 12
     title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = self.tb
+    title.Parent = self.hdr
 
-    local version = Instance.new("TextLabel")
-    version.BackgroundTransparency = 1
-    version.Size = UDim2.fromOffset(80, 30)
-    version.Position = UDim2.new(1, -110, 0, 5)
-    version.Font = Enum.Font.Gotham
-    version.Text = "v5"
-    version.TextColor3 = Color3.fromRGB(90, 90, 100)
-    version.TextSize = 11
-    version.TextXAlignment = Enum.TextXAlignment.Right
-    version.Parent = self.tb
+    local badge = Instance.new("TextLabel")
+    badge.BackgroundColor3 = T.row
+    badge.BorderSizePixel = 0
+    badge.Size = UDim2.fromOffset(48, 18)
+    badge.Position = UDim2.new(1, -70, 0.5, -9)
+    badge.Font = Enum.Font.GothamBold
+    badge.Text = "v6"
+    badge.TextColor3 = T.accent
+    badge.TextSize = 10
+    badge.Parent = self.hdr
+    local buc = Instance.new("UICorner"); buc.CornerRadius = UDim.new(0, 4); buc.Parent = badge
 
-    local cs = 26
-    local cb = Instance.new("TextButton")
-    cb.BackgroundColor3 = Color3.fromRGB(30, 30, 36)
-    cb.BorderSizePixel = 0
-    cb.Size = UDim2.fromOffset(cs, cs)
-    cb.Position = UDim2.new(1, -34, 0.5, -cs/2)
-    cb.Font = Enum.Font.GothamBold
-    cb.Text = "×"
-    cb.TextColor3 = Color3.fromRGB(220, 220, 230)
-    cb.TextSize = 18
-    cb.Parent = self.tb
-    local cbuc = Instance.new("UICorner"); cbuc.CornerRadius = UDim.new(0, 6); cbuc.Parent = cb
-    cb.MouseButton1Click:Connect(function() self:toggle(false) end)
+    local xb = Instance.new("TextButton")
+    xb.BackgroundColor3 = Color3.fromRGB(30, 30, 36)
+    xb.BorderSizePixel = 0
+    xb.Size = UDim2.fromOffset(22, 22)
+    xb.Position = UDim2.new(1, -30, 0.5, -11)
+    xb.Font = Enum.Font.GothamBold
+    xb.Text = "×"
+    xb.TextColor3 = T.text_sub
+    xb.TextSize = 16
+    xb.AutoButtonColor = false
+    xb.Parent = self.hdr
+    local xuc = Instance.new("UICorner"); xuc.CornerRadius = UDim.new(0, 5); xuc.Parent = xb
+    xb.MouseEnter:Connect(function() xb.BackgroundColor3 = Color3.fromRGB(60, 30, 34); xb.TextColor3 = Color3.fromRGB(255, 100, 100) end)
+    xb.MouseLeave:Connect(function() xb.BackgroundColor3 = Color3.fromRGB(30, 30, 36); xb.TextColor3 = T.text_sub end)
+    xb.MouseButton1Click:Connect(function() self:toggle(false) end)
 
-    -- sidebar
-    local sideW = 62
+    -- SIDEBAR
+    local sw = self.mobile and 68 or 76
     self.side = Instance.new("Frame")
-    self.side.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+    self.side.BackgroundColor3 = T.sidebar
     self.side.BorderSizePixel = 0
-    self.side.Size = UDim2.new(0, sideW, 1, -titleH)
-    self.side.Position = UDim2.fromOffset(0, titleH)
+    self.side.Size = UDim2.new(0, sw, 1, -hh)
+    self.side.Position = UDim2.fromOffset(0, hh)
     self.side.Parent = self.win
-    local ll = Instance.new("UIListLayout")
-    ll.Padding = UDim.new(0, 4)
-    ll.SortOrder = Enum.SortOrder.LayoutOrder
-    ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    ll.Parent = self.side
-    local sp = Instance.new("UIPadding")
-    sp.PaddingTop = UDim.new(0, 10)
-    sp.Parent = self.side
+    local sidecover = Instance.new("Frame")
+    sidecover.BackgroundColor3 = T.sidebar; sidecover.BorderSizePixel = 0
+    sidecover.Size = UDim2.new(0, 4, 1, 0); sidecover.Position = UDim2.new(0, 0, 0, 0)
+    sidecover.Parent = self.side
+    local sline = Instance.new("Frame")
+    sline.BackgroundColor3 = T.border; sline.BorderSizePixel = 0
+    sline.Size = UDim2.new(0, 1, 1, 0); sline.Position = UDim2.new(1, -1, 0, 0)
+    sline.Parent = self.side
 
-    -- body
+    local sll = Instance.new("UIListLayout")
+    sll.Padding = UDim.new(0, 2)
+    sll.SortOrder = Enum.SortOrder.LayoutOrder
+    sll.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    sll.Parent = self.side
+    local spad = Instance.new("UIPadding")
+    spad.PaddingTop = UDim.new(0, 8)
+    spad.Parent = self.side
+
+    -- BODY
     self.body = Instance.new("Frame")
-    self.body.BackgroundColor3 = Color3.fromRGB(14, 14, 17)
+    self.body.BackgroundColor3 = T.bg
     self.body.BorderSizePixel = 0
-    self.body.Size = UDim2.new(1, -sideW, 1, -titleH)
-    self.body.Position = UDim2.fromOffset(sideW, titleH)
+    self.body.Size = UDim2.new(1, -sw, 1, -hh)
+    self.body.Position = UDim2.fromOffset(sw, hh)
     self.body.ClipsDescendants = true
     self.body.Parent = self.win
-    local bodyuc = Instance.new("UICorner"); bodyuc.CornerRadius = UDim.new(0, 12); bodyuc.Parent = self.body
+    local buc2 = Instance.new("UICorner"); buc2.CornerRadius = UDim.new(0, 10); buc2.Parent = self.body
 
-    -- drag
-    local ds, sp2
-    self.tb.InputBegan:Connect(function(i)
+    -- DRAG
+    local ds, sp
+    self.hdr.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            ds = Vector2.new(i.Position.X, i.Position.Y); sp2 = self.win.Position
+            ds = Vector2.new(i.Position.X, i.Position.Y); sp = self.win.Position
         end
     end)
-    self.tb.InputChanged:Connect(function(i)
+    self.hdr.InputChanged:Connect(function(i)
         if not ds then return end
         if i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch then
             local p = Vector2.new(i.Position.X, i.Position.Y); local d = p - ds
-            self.win.Position = UDim2.new(sp2.X.Scale, sp2.X.Offset + d.X, sp2.Y.Scale, sp2.Y.Offset + d.Y)
+            self.win.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
         end
     end)
-    self.tb.InputEnded:Connect(function(i)
+    self.hdr.InputEnded:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then ds = nil end
     end)
 
-    -- mobile floating button
+    -- MOBILE FLOATING BUTTON
     if self.mobile then
         self.fb = Instance.new("TextButton")
-        self.fb.BackgroundColor3 = C.accent
+        self.fb.BackgroundColor3 = T.accent
         self.fb.BorderSizePixel = 0
-        self.fb.Size = UDim2.fromOffset(52, 52)
-        self.fb.Position = UDim2.new(0, 16, 1, -84)
-        self.fb.Font = Enum.Font.GothamBold
+        self.fb.Size = UDim2.fromOffset(48, 48)
+        self.fb.Position = UDim2.new(0, 16, 1, -80)
+        self.fb.Font = Enum.Font.GothamBlack
         self.fb.Text = "S"
-        self.fb.TextColor3 = Color3.fromRGB(255,255,255)
-        self.fb.TextSize = 24
+        self.fb.TextColor3 = Color3.fromRGB(15, 15, 20)
+        self.fb.TextSize = 20
         self.fb.Parent = self.frame
         local fuc = Instance.new("UICorner"); fuc.CornerRadius = UDim.new(1, 0); fuc.Parent = self.fb
+        local fst = Instance.new("UIStroke"); fst.Color = T.accent_dk; fst.Thickness = 1.5; fst.Parent = self.fb
         self.fb.MouseButton1Click:Connect(function() self:toggle(not self.enabled) end)
 
         local fds, fsp
@@ -381,41 +351,56 @@ function UI:toggle(state)
     self.win.Visible = self.enabled
 end
 
-function UI:addTab(key, name)
+-- TAB (sidebar icon + label)
+function UI:tab(cfg)
+    cfg = cfg or {}
     if not self.ok then return nil end
-    local tab = {name=name, btn=nil, page=nil, key=key}
+    local name = cfg.name or "tab"
+    local icon = cfg.icon or TAB_ICONS[name] or "●"
+
+    local tab = {name=name, icon=icon, btn=nil, page=nil}
 
     local b = Instance.new("TextButton")
-    b.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
+    b.BackgroundColor3 = T.sidebar
+    b.BackgroundTransparency = 1
     b.BorderSizePixel = 0
-    b.Size = UDim2.fromOffset(46, 46)
+    b.Size = UDim2.new(0, 62, 0, 48)
     b.Text = ""
     b.AutoButtonColor = false
     b.Parent = self.side
-    local uc = Instance.new("UICorner"); uc.CornerRadius = UDim.new(0, 8); uc.Parent = b
+    local buc = Instance.new("UICorner"); buc.CornerRadius = UDim.new(0, 7); buc.Parent = b
 
-    local icon = new_icon(ICON_MAP[key] or "?", Color3.fromRGB(160, 160, 170), 22)
-    icon.Size = UDim2.fromScale(1, 1)
-    icon.TextSize = 20
-    icon.Parent = b
+    local ic = Instance.new("TextLabel")
+    ic.BackgroundTransparency = 1
+    ic.Size = UDim2.new(1, 0, 0, 26)
+    ic.Position = UDim2.fromOffset(0, 4)
+    ic.Font = Enum.Font.GothamBold
+    ic.Text = icon
+    ic.TextColor3 = T.muted
+    ic.TextSize = 18
+    ic.Parent = b
 
-    local label = Instance.new("TextLabel")
-    label.BackgroundTransparency = 1
-    label.Size = UDim2.new(1, 0, 0, 12)
-    label.Position = UDim2.new(0, 0, 1, -14)
-    label.Font = Enum.Font.Gotham
-    label.Text = name
-    label.TextColor3 = Color3.fromRGB(120, 120, 130)
-    label.TextSize = 8
-    label.Parent = b
+    local lb = Instance.new("TextLabel")
+    lb.BackgroundTransparency = 1
+    lb.Size = UDim2.new(1, 0, 0, 12)
+    lb.Position = UDim2.new(0, 0, 1, -16)
+    lb.Font = Enum.Font.Gotham
+    lb.Text = name
+    lb.TextColor3 = T.muted
+    lb.TextSize = 9
+    lb.Parent = b
 
     tab.btn = b
-    tab.icon = icon
-    tab.label = label
+    tab.ic = ic
+    tab.lb = lb
+
     self.tabs[#self.tabs+1] = tab
     tab.page = self:_page()
+    tab.page.Visible = false
 
     b.MouseButton1Click:Connect(function() self:selectTab(tab) end)
+    b.MouseEnter:Connect(function() if self.tab ~= tab then b.BackgroundTransparency = 0; b.BackgroundColor3 = T.row end end)
+    b.MouseLeave:Connect(function() if self.tab ~= tab then b.BackgroundTransparency = 1 end end)
 
     if #self.tabs == 1 then self:selectTab(tab) end
     return tab
@@ -426,238 +411,291 @@ function UI:selectTab(tab)
     self.tab = tab
     for _, t in ipairs(self.tabs) do
         if t == tab then
-            t.btn.BackgroundColor3 = C.accent
-            t.icon.TextColor3 = Color3.fromRGB(255, 255, 255)
-            t.label.TextColor3 = Color3.fromRGB(220, 220, 230)
+            t.btn.BackgroundTransparency = 0
+            t.btn.BackgroundColor3 = T.row
+            t.ic.TextColor3 = T.accent
+            t.lb.TextColor3 = T.accent
             t.page.Visible = true
         else
-            t.btn.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
-            t.icon.TextColor3 = Color3.fromRGB(160, 160, 170)
-            t.label.TextColor3 = Color3.fromRGB(120, 120, 130)
+            t.btn.BackgroundTransparency = 1
+            t.ic.TextColor3 = T.muted
+            t.lb.TextColor3 = T.muted
             t.page.Visible = false
         end
     end
 end
 
 function UI:_page()
-    local p = Instance.new("Frame")
+    local p = Instance.new("ScrollingFrame")
     p.BackgroundTransparency = 1
+    p.BorderSizePixel = 0
     p.Size = UDim2.fromScale(1, 1)
-    p.Visible = false
+    p.ScrollBarThickness = self.mobile and 6 or 4
+    p.ScrollBarImageColor3 = T.border2
+    p.ScrollBarImageTransparency = 0.4
+    p.CanvasSize = UDim2.new(0, 0, 0, 0)
+    p.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    p.ScrollingDirection = Enum.ScrollingDirection.Y
     p.Parent = self.body
 
-    -- two column scroll frames
-    local pad = 12
-    local left = Instance.new("ScrollingFrame")
+    -- 3 columns: left, center, right (as shitaro)
+    local pad = 10
+    local gap = 8
+    local colw = (1 / 3)
+
+    local left = Instance.new("Frame")
     left.BackgroundTransparency = 1
     left.BorderSizePixel = 0
-    left.Size = UDim2.new(0.5, -pad*1.5, 1, -pad*2)
+    left.Size = UDim2.new(colw, -pad - gap/1.5, 1, -pad*2)
     left.Position = UDim2.fromOffset(pad, pad)
-    left.ScrollBarThickness = 3
-    left.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 90)
-    left.CanvasSize = UDim2.new(0, 0, 0, 0)
-    left.AutomaticCanvasSize = Enum.AutomaticSize.Y
     left.Parent = p
-    local lll = Instance.new("UIListLayout"); lll.Padding = UDim.new(0, 10); lll.SortOrder = Enum.SortOrder.LayoutOrder; lll.Parent = left
+    local lll = Instance.new("UIListLayout"); lll.Padding = UDim.new(0, gap); lll.SortOrder = Enum.SortOrder.LayoutOrder; lll.Parent = left
+    local leftAuto = Instance.new("Frame")
+    leftAuto.BackgroundTransparency = 1
+    leftAuto.Size = UDim2.new(1, 0, 0, 0)
+    leftAuto.AutomaticSize = Enum.AutomaticSize.Y
+    leftAuto.Parent = left
 
-    local right = Instance.new("ScrollingFrame")
-    right.BackgroundTransparency = 1
-    right.BorderSizePixel = 0
-    right.Size = UDim2.new(0.5, -pad*1.5, 1, -pad*2)
-    right.Position = UDim2.new(0.5, pad*0.5, 0, pad)
-    right.ScrollBarThickness = 3
-    right.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 90)
-    right.CanvasSize = UDim2.new(0, 0, 0, 0)
-    right.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    right.Parent = p
-    local rll = Instance.new("UIListLayout"); rll.Padding = UDim.new(0, 10); rll.SortOrder = Enum.SortOrder.LayoutOrder; rll.Parent = right
+    -- Actually we need the columns inside a scrolling parent. Use 3 ScrollingFrames side by side.
+    left:Destroy()
+    leftAuto:Destroy()
 
-    p.left = left
-    p.right = right
-    p.leftList = lll
-    p.rightList = rll
+    local function mcol(px)
+        local c = Instance.new("ScrollingFrame")
+        c.BackgroundTransparency = 1
+        c.BorderSizePixel = 0
+        c.Size = UDim2.new(colw, -pad - gap*2/3, 1, -pad*2)
+        c.Position = UDim2.fromOffset(px, pad)
+        c.ScrollBarThickness = 3
+        c.ScrollBarImageColor3 = T.border2
+        c.ScrollBarImageTransparency = 0.5
+        c.CanvasSize = UDim2.new(0, 0, 0, 0)
+        c.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        c.ScrollingDirection = Enum.ScrollingDirection.Y
+        c.Parent = p
+        local ll = Instance.new("UIListLayout"); ll.Padding = UDim.new(0, gap); ll.SortOrder = Enum.SortOrder.LayoutOrder; ll.Parent = c
+        return c, ll
+    end
+
+    local colL, llL = mcol(pad)
+    local colC, llC = mcol(pad + colw * self.size.X / 3 + gap/2)
+    local colR, llR = mcol(pad + colw * self.size.X * 2 / 3 + gap)
+
+    -- recalibrate width/position properly (we're inside a Frame of body, so use Scale from parent frame)
+    local function fix(c, scale, off)
+        c.Size = UDim2.new(scale, -pad - gap*2/3, 1, -pad*2)
+        c.Position = UDim2.fromOffset(off, pad)
+    end
+
+    -- Actually simpler: 3 columns of equal width with gap
+    local totalW = self.size.X - 76 -- sidebar removed
+    -- We just use Scale thirds; gap handled via size offset:
+    for i, c in ipairs({colL, colC, colR}) do
+        c.Size = UDim2.new(1/3, -pad*2/3 - gap*2/3, 1, -pad*2)
+        c.Position = UDim2.new((i-1)/3, pad + ((i-1)*gap)/3, 0, pad)
+    end
+    colC.Position = UDim2.new(1/3, pad + gap/3, 0, pad)
+    colR.Position = UDim2.new(2/3, pad + gap*2/3, 0, pad)
+
+    p._cols = {left=colL, center=colC, right=colR}
+    p._lls = {left=llL, center=llC, right=llR}
 
     return p
 end
 
-function UI:addSection(tab, name, side)
+-- SECTION (card)
+function UI:section(tab, cfg)
+    cfg = cfg or {}
     if not self.ok or not tab or not tab.page then return nil end
-    local container = (side == "right") and tab.page.right or tab.page.left
-    local listLayout = (side == "right") and tab.page.rightList or tab.page.leftList
+    local side = cfg.side or "left"
+    if side == "full" then side = "center" end
+    local col = tab.page._cols[side] or tab.page._cols.left
+    local ll = tab.page._lls[side] or tab.page._lls.left
 
     local s = Instance.new("Frame")
-    s.BackgroundColor3 = Color3.fromRGB(19, 19, 24)
+    s.BackgroundColor3 = T.card
     s.BorderSizePixel = 0
     s.Size = UDim2.new(1, 0, 0, 0)
     s.AutomaticSize = Enum.AutomaticSize.Y
-    s.LayoutOrder = #listLayout:GetChildren() + 1
-    s.Parent = container
+    s.LayoutOrder = #ll:GetChildren() + 1
+    s.Parent = col
     local suc = Instance.new("UICorner"); suc.CornerRadius = UDim.new(0, 8); suc.Parent = s
+    local sst = Instance.new("UIStroke"); sst.Color = T.border; sst.Thickness = 1; sst.Parent = s
 
-    local header = Instance.new("Frame")
-    header.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
-    header.BorderSizePixel = 0
-    header.Size = UDim2.new(1, 0, 0, 26)
-    header.Parent = s
-    local huc = Instance.new("UICorner"); huc.CornerRadius = UDim.new(0, 8); huc.Parent = header
+    local hd = Instance.new("Frame")
+    hd.BackgroundColor3 = T.card_head
+    hd.BorderSizePixel = 0
+    hd.Size = UDim2.new(1, 0, 0, 26)
+    hd.Parent = s
+    local huc = Instance.new("UICorner"); huc.CornerRadius = UDim.new(0, 8); huc.Parent = hd
+    local hcover = Instance.new("Frame")
+    hcover.BackgroundColor3 = T.card_head; hcover.BorderSizePixel = 0
+    hcover.Size = UDim2.new(1, 0, 0, 8); hcover.Position = UDim2.new(0, 0, 1, -8)
+    hcover.Parent = hd
 
-    local accent = Instance.new("Frame")
-    accent.BackgroundColor3 = C.accent
-    accent.BorderSizePixel = 0
-    accent.Size = UDim2.fromOffset(3, 14)
-    accent.Position = UDim2.fromOffset(10, 6)
-    accent.Parent = header
-    local auc = Instance.new("UICorner"); auc.CornerRadius = UDim.new(1, 0); auc.Parent = accent
+    local ac = Instance.new("Frame")
+    ac.BackgroundColor3 = T.accent
+    ac.BorderSizePixel = 0
+    ac.Size = UDim2.fromOffset(2, 12)
+    ac.Position = UDim2.fromOffset(8, 7)
+    ac.Parent = hd
+    local auc = Instance.new("UICorner"); auc.CornerRadius = UDim.new(1, 0); auc.Parent = ac
 
-    local htitle = Instance.new("TextLabel")
-    htitle.BackgroundTransparency = 1
-    htitle.Size = UDim2.new(1, -30, 1, 0)
-    htitle.Position = UDim2.fromOffset(20, 0)
-    htitle.Font = Enum.Font.GothamBold
-    htitle.Text = string.upper(name)
-    htitle.TextColor3 = Color3.fromRGB(220, 220, 230)
-    htitle.TextSize = 11
-    htitle.TextXAlignment = Enum.TextXAlignment.Left
-    htitle.Parent = header
+    local hl = Instance.new("TextLabel")
+    hl.BackgroundTransparency = 1
+    hl.Size = UDim2.new(1, -20, 1, 0)
+    hl.Position = UDim2.fromOffset(16, 0)
+    hl.Font = Enum.Font.GothamBold
+    hl.Text = string.upper(cfg.name or "section")
+    hl.TextColor3 = T.text
+    hl.TextSize = 10
+    hl.TextXAlignment = Enum.TextXAlignment.Left
+    hl.Parent = hd
 
-    local content = Instance.new("Frame")
-    content.BackgroundTransparency = 1
-    content.Size = UDim2.new(1, 0, 0, 0)
-    content.Position = UDim2.fromOffset(0, 26)
-    content.AutomaticSize = Enum.AutomaticSize.Y
-    content.Parent = s
-    local cll = Instance.new("UIListLayout"); cll.Padding = UDim.new(0, 4); cll.SortOrder = Enum.SortOrder.LayoutOrder; cll.Parent = content
-    local cp = Instance.new("UIPadding"); cp.PaddingTop = UDim.new(0, 6); cp.PaddingBottom = UDim.new(0, 8); cp.PaddingLeft = UDim.new(0, 8); cp.PaddingRight = UDim.new(0, 8); cp.Parent = content
+    local ct = Instance.new("Frame")
+    ct.BackgroundTransparency = 1
+    ct.Size = UDim2.new(1, 0, 0, 0)
+    ct.Position = UDim2.fromOffset(0, 26)
+    ct.AutomaticSize = Enum.AutomaticSize.Y
+    ct.Parent = s
+    local cll = Instance.new("UIListLayout"); cll.Padding = UDim.new(0, 1); cll.SortOrder = Enum.SortOrder.LayoutOrder; cll.Parent = ct
+    local cpd = Instance.new("UIPadding")
+    cpd.PaddingTop = UDim.new(0, 4); cpd.PaddingBottom = UDim.new(0, 6)
+    cpd.PaddingLeft = UDim.new(0, 6); cpd.PaddingRight = UDim.new(0, 6)
+    cpd.Parent = ct
 
-    return content
+    return ct
 end
 
-function UI:addToggle(section, name, default, cb)
+-- ROW helper
+local function make_row(parent, label, right_w)
+    local r = Instance.new("Frame")
+    r.BackgroundColor3 = T.row
+    r.BorderSizePixel = 0
+    r.Size = UDim2.new(1, 0, 0, 26)
+    r.Parent = parent
+    local uc = Instance.new("UICorner"); uc.CornerRadius = UDim.new(0, 5); uc.Parent = r
+
+    local l = Instance.new("TextLabel")
+    l.BackgroundTransparency = 1
+    l.Size = UDim2.new(1, -(right_w or 48) - 12, 1, 0)
+    l.Position = UDim2.fromOffset(10, 0)
+    l.Font = Enum.Font.Gotham
+    l.Text = label
+    l.TextColor3 = T.text_sub
+    l.TextSize = 11
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Parent = r
+    return r, l
+end
+
+-- TOGGLE
+function UI:toggle_(section, name, default, cb)
     if not self.ok or not section then return end
-    local row = Instance.new("Frame")
-    row.BackgroundTransparency = 1
-    row.Size = UDim2.new(1, 0, 0, 26)
-    row.Parent = section
+    local r = make_row(section, name, 40)
 
-    local label = Instance.new("TextLabel")
-    label.BackgroundTransparency = 1
-    label.Size = UDim2.new(1, -60, 1, 0)
-    label.Font = Enum.Font.Gotham
-    label.Text = name
-    label.TextColor3 = Color3.fromRGB(200, 200, 210)
-    label.TextSize = 12
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = row
+    local sw = Instance.new("TextButton")
+    sw.BackgroundColor3 = default and T.accent or T.track
+    sw.BorderSizePixel = 0
+    sw.Size = UDim2.fromOffset(32, 16)
+    sw.Position = UDim2.new(1, -38, 0.5, -8)
+    sw.Text = ""
+    sw.AutoButtonColor = false
+    sw.Parent = r
+    local suc = Instance.new("UICorner"); suc.CornerRadius = UDim.new(1, 0); suc.Parent = sw
 
-    local btn = Instance.new("TextButton")
-    btn.BackgroundColor3 = default and C.accent or Color3.fromRGB(38, 38, 46)
-    btn.BorderSizePixel = 0
-    btn.Size = UDim2.fromOffset(34, 16)
-    btn.Position = UDim2.new(1, -34, 0.5, -8)
-    btn.Text = ""
-    btn.AutoButtonColor = false
-    btn.Parent = row
-    local buc = Instance.new("UICorner"); buc.CornerRadius = UDim.new(1, 0); buc.Parent = btn
-
-    local knob = Instance.new("Frame")
-    knob.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
-    knob.BorderSizePixel = 0
-    knob.Size = UDim2.fromOffset(12, 12)
-    knob.Position = default and UDim2.new(1, -14, 0.5, -6) or UDim2.fromOffset(2, 2)
-    knob.Parent = btn
-    local kuc = Instance.new("UICorner"); kuc.CornerRadius = UDim.new(1, 0); kuc.Parent = knob
+    local kd = 12
+    local kn = Instance.new("Frame")
+    kn.BackgroundColor3 = Color3.fromRGB(240, 240, 245)
+    kn.BorderSizePixel = 0
+    kn.Size = UDim2.fromOffset(kd, kd)
+    kn.Position = default and UDim2.new(1, -kd - 2, 0.5, -kd/2) or UDim2.fromOffset(2, 2)
+    kn.Parent = sw
+    local kuc = Instance.new("UICorner"); kuc.CornerRadius = UDim.new(1, 0); kuc.Parent = kn
 
     local state = default and true or false
     local function paint()
-        btn.BackgroundColor3 = state and C.accent or Color3.fromRGB(38, 38, 46)
-        knob.Position = state and UDim2.new(1, -14, 0.5, -6) or UDim2.fromOffset(2, 2)
+        sw.BackgroundColor3 = state and T.accent or T.track
+        kn.Position = state and UDim2.new(1, -kd - 2, 0.5, -kd/2) or UDim2.fromOffset(2, 2)
     end
 
-    btn.MouseButton1Click:Connect(function()
-        state = not state
-        paint()
+    sw.MouseButton1Click:Connect(function()
+        state = not state; paint()
         if cb then pcall(cb, state) end
     end)
-    return {value=function() return state end}
 end
 
-function UI:addSlider(section, name, default, min, max, round, cb, suffix)
+-- SLIDER
+function UI:slider_(section, name, default, mn, mx, round, cb, suffix)
     if not self.ok or not section then return end
-    local row = Instance.new("Frame")
-    row.BackgroundTransparency = 1
-    row.Size = UDim2.new(1, 0, 0, 40)
-    row.Parent = section
+    local r = Instance.new("Frame")
+    r.BackgroundColor3 = T.row
+    r.BorderSizePixel = 0
+    r.Size = UDim2.new(1, 0, 0, 40)
+    r.Parent = section
+    local uc = Instance.new("UICorner"); uc.CornerRadius = UDim.new(0, 5); uc.Parent = r
 
-    local label = Instance.new("TextLabel")
-    label.BackgroundTransparency = 1
-    label.Size = UDim2.new(1, -50, 0, 14)
-    label.Font = Enum.Font.Gotham
-    label.Text = name
-    label.TextColor3 = Color3.fromRGB(200, 200, 210)
-    label.TextSize = 12
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = row
+    local l = Instance.new("TextLabel")
+    l.BackgroundTransparency = 1
+    l.Size = UDim2.new(1, -60, 0, 16)
+    l.Position = UDim2.fromOffset(10, 2)
+    l.Font = Enum.Font.Gotham
+    l.Text = name
+    l.TextColor3 = T.text_sub
+    l.TextSize = 11
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Parent = r
 
-    local val = Instance.new("TextLabel")
-    val.BackgroundTransparency = 1
-    val.Size = UDim2.fromOffset(60, 14)
-    val.Position = UDim2.new(1, -60, 0, 0)
-    val.Font = Enum.Font.GothamBold
-    val.Text = tostring(default) .. (suffix or "")
-    val.TextColor3 = C.accent
-    val.TextSize = 11
-    val.TextXAlignment = Enum.TextXAlignment.Right
-    val.Parent = row
+    local v = Instance.new("TextLabel")
+    v.BackgroundTransparency = 1
+    v.Size = UDim2.fromOffset(60, 16)
+    v.Position = UDim2.new(1, -65, 0, 2)
+    v.Font = Enum.Font.GothamBold
+    v.Text = tostring(default) .. (suffix or "")
+    v.TextColor3 = T.accent
+    v.TextSize = 11
+    v.TextXAlignment = Enum.TextXAlignment.Right
+    v.Parent = r
 
-    local barY = 22
     local bar = Instance.new("Frame")
-    bar.BackgroundColor3 = Color3.fromRGB(32, 32, 38)
+    bar.BackgroundColor3 = T.track
     bar.BorderSizePixel = 0
-    bar.Size = UDim2.new(1, 0, 0, 8)
-    bar.Position = UDim2.fromOffset(0, barY)
-    bar.Parent = row
+    bar.Size = UDim2.new(1, -20, 0, 6)
+    bar.Position = UDim2.fromOffset(10, 24)
+    bar.Parent = r
     local buc = Instance.new("UICorner"); buc.CornerRadius = UDim.new(1, 0); buc.Parent = bar
 
     local fill = Instance.new("Frame")
-    fill.BackgroundColor3 = C.accent
+    fill.BackgroundColor3 = T.accent
     fill.BorderSizePixel = 0
-    fill.Size = UDim2.fromScale((default - min) / (max - min), 1)
+    fill.Size = UDim2.fromScale((default - mn) / math.max(mx - mn, 1e-6), 1)
     fill.Parent = bar
     local fuc = Instance.new("UICorner"); fuc.CornerRadius = UDim.new(1, 0); fuc.Parent = fill
-
-    local knob = Instance.new("Frame")
-    knob.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
-    knob.BorderSizePixel = 0
-    knob.Size = UDim2.fromOffset(12, 12)
-    knob.Position = UDim2.new((default - min) / (max - min), -6, 0.5, -6)
-    knob.Parent = bar
-    local kuc = Instance.new("UICorner"); kuc.CornerRadius = UDim.new(1, 0); kuc.Parent = knob
 
     local dragging = false
     local function setFromX(x)
         local a = bar.AbsolutePosition.X
-        local sz = bar.AbsoluteSize.X
-        if sz <= 0 then return end
-        local p = math.clamp((x - a) / sz, 0, 1)
-        local raw = min + (max - min) * p
+        local w = bar.AbsoluteSize.X
+        if w <= 0 then return end
+        local p = math.clamp((x - a) / w, 0, 1)
+        local raw = mn + (mx - mn) * p
         if round then
             local mult = 10 ^ round
             raw = math.floor(raw * mult + 0.5) / mult
         else
             raw = math.floor(raw + 0.5)
         end
-        fill.Size = UDim2.fromScale((raw - min) / (max - min), 1)
-        knob.Position = UDim2.new((raw - min) / (max - min), -6, 0.5, -6)
-        val.Text = tostring(raw) .. (suffix or "")
+        fill.Size = UDim2.fromScale((raw - mn) / math.max(mx - mn, 1e-6), 1)
+        v.Text = tostring(raw) .. (suffix or "")
         if cb then pcall(cb, raw) end
     end
 
     local hit = Instance.new("TextButton")
     hit.BackgroundTransparency = 1
     hit.Text = ""
-    hit.Size = UDim2.new(1, 0, 0, 20)
-    hit.Position = UDim2.fromOffset(0, 16)
-    hit.Parent = row
+    hit.Size = UDim2.new(1, -20, 0, 18)
+    hit.Position = UDim2.fromOffset(10, 20)
+    hit.Parent = r
 
     hit.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
@@ -674,154 +712,191 @@ function UI:addSlider(section, name, default, min, max, round, cb, suffix)
     end)
 end
 
-function UI:addColor(section, name, default, cb)
+-- COLOR (tap cycle + right tap sat)
+function UI:color_(section, name, default, cb)
     if not self.ok or not section then return end
-    local row = Instance.new("Frame")
-    row.BackgroundTransparency = 1
-    row.Size = UDim2.new(1, 0, 0, 26)
-    row.Parent = section
-
-    local label = Instance.new("TextLabel")
-    label.BackgroundTransparency = 1
-    label.Size = UDim2.new(1, -46, 1, 0)
-    label.Font = Enum.Font.Gotham
-    label.Text = name
-    label.TextColor3 = Color3.fromRGB(200, 200, 210)
-    label.TextSize = 12
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = row
-
-    local swatch = Instance.new("TextButton")
-    swatch.BackgroundColor3 = default
-    swatch.BorderSizePixel = 0
-    swatch.Size = UDim2.fromOffset(32, 18)
-    swatch.Position = UDim2.new(1, -32, 0.5, -9)
-    swatch.Text = ""
-    swatch.AutoButtonColor = false
-    swatch.Parent = row
-    local suc = Instance.new("UICorner"); suc.CornerRadius = UDim.new(0, 4); suc.Parent = swatch
-    local ss = Instance.new("UIStroke"); ss.Color = Color3.fromRGB(60, 60, 70); ss.Thickness = 1; ss.Parent = swatch
+    local r = make_row(section, name, 40)
+    local sw = Instance.new("TextButton")
+    sw.BackgroundColor3 = default
+    sw.BorderSizePixel = 0
+    sw.Size = UDim2.fromOffset(32, 16)
+    sw.Position = UDim2.new(1, -38, 0.5, -8)
+    sw.Text = ""
+    sw.AutoButtonColor = false
+    sw.Parent = r
+    local suc = Instance.new("UICorner"); suc.CornerRadius = UDim.new(0, 4); suc.Parent = sw
+    local sst = Instance.new("UIStroke"); sst.Color = T.border2; sst.Thickness = 1; sst.Parent = sw
 
     local h, s, v = Color3.toHSV(default)
     local function paint()
         local c = Color3.fromHSV(h, s, v)
-        swatch.BackgroundColor3 = c
+        sw.BackgroundColor3 = c
         if cb then pcall(cb, c) end
     end
-    swatch.MouseButton1Click:Connect(function() h = (h + 0.06) % 1; paint() end)
-    swatch.MouseButton2Click:Connect(function() s = s > 0.6 and 0.4 or 1; paint() end)
+    sw.MouseButton1Click:Connect(function() h = (h + 0.06) % 1; paint() end)
+    sw.MouseButton2Click:Connect(function() s = s > 0.6 and 0.4 or 1; paint() end)
 end
 
-function UI:addDropdown(section, name, values, default, cb)
+-- DROPDOWN
+function UI:dropdown_(section, name, values, default, cb)
     if not self.ok or not section then return end
-    local row = Instance.new("Frame")
-    row.BackgroundTransparency = 1
-    row.Size = UDim2.new(1, 0, 0, 28)
-    row.Parent = section
+    local r = Instance.new("Frame")
+    r.BackgroundColor3 = T.row
+    r.BorderSizePixel = 0
+    r.Size = UDim2.new(1, 0, 0, 26)
+    r.Parent = section
+    local uc = Instance.new("UICorner"); uc.CornerRadius = UDim.new(0, 5); uc.Parent = r
+    r.ClipsDescendants = false
 
-    local label = Instance.new("TextLabel")
-    label.BackgroundTransparency = 1
-    label.Size = UDim2.new(0.4, 0, 1, 0)
-    label.Font = Enum.Font.Gotham
-    label.Text = name
-    label.TextColor3 = Color3.fromRGB(200, 200, 210)
-    label.TextSize = 12
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = row
+    local l = Instance.new("TextLabel")
+    l.BackgroundTransparency = 1
+    l.Size = UDim2.new(1, -90, 1, 0)
+    l.Position = UDim2.fromOffset(10, 0)
+    l.Font = Enum.Font.Gotham
+    l.Text = name
+    l.TextColor3 = T.text_sub
+    l.TextSize = 11
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Parent = r
 
-    local btn = Instance.new("TextButton")
-    btn.BackgroundColor3 = Color3.fromRGB(28, 28, 34)
-    btn.BorderSizePixel = 0
-    btn.Size = UDim2.new(0.6, 0, 1, 0)
-    btn.Position = UDim2.new(0.4, 0, 0, 0)
-    btn.Font = Enum.Font.GothamBold
-    btn.Text = tostring(default)
-    btn.TextColor3 = Color3.fromRGB(220, 220, 230)
-    btn.TextSize = 11
-    btn.Parent = row
-    local buc = Instance.new("UICorner"); buc.CornerRadius = UDim.new(0, 5); buc.Parent = btn
+    local val = Instance.new("TextButton")
+    val.BackgroundTransparency = 1
+    val.Size = UDim2.new(0, 80, 1, 0)
+    val.Position = UDim2.new(1, -80, 0, 0)
+    val.Font = Enum.Font.GothamBold
+    val.Text = tostring(default) .. "  ▾"
+    val.TextColor3 = T.accent
+    val.TextSize = 11
+    val.TextXAlignment = Enum.TextXAlignment.Right
+    val.Parent = r
 
     local idx = 1
     for i, vv in ipairs(values) do if vv == default then idx = i break end end
 
     local expanded = false
-    local dropdown = nil
+    local dpanel = nil
+
     local function collapse()
-        if dropdown then dropdown:Destroy(); dropdown = nil end
+        if dpanel then dpanel:Destroy(); dpanel = nil end
         expanded = false
     end
+
     local function expand()
         collapse()
         expanded = true
-        local d = Instance.new("Frame")
-        d.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
-        d.BorderSizePixel = 0
-        d.Size = UDim2.new(1, 0, 0, #values * 22 + 8)
-        d.AutomaticSize = Enum.AutomaticSize.None
-        d.Position = UDim2.fromOffset(0, 30)
-        d.ZIndex = 5
-        d.Parent = row
-        local duc = Instance.new("UICorner"); duc.CornerRadius = UDim.new(0, 5); duc.Parent = d
-        local ds = Instance.new("UIStroke"); ds.Color = Color3.fromRGB(50, 50, 60); ds.Thickness = 1; ds.Parent = d
+        local list = Instance.new("Frame")
+        list.BackgroundColor3 = T.panel
+        list.BorderSizePixel = 0
+        list.Size = UDim2.new(1, 0, 0, #values * 22 + 8)
+        list.Position = UDim2.fromOffset(0, 30)
+        list.ZIndex = 20
+        list.Parent = r
+        local luc = Instance.new("UICorner"); luc.CornerRadius = UDim.new(0, 5); luc.Parent = list
+        local lst = Instance.new("UIStroke"); lst.Color = T.border2; lst.Thickness = 1; lst.Parent = list
 
         for i, vv in ipairs(values) do
             local it = Instance.new("TextButton")
-            it.BackgroundColor3 = (i == idx) and C.accent or Color3.fromRGB(24, 24, 30)
+            it.BackgroundColor3 = (i == idx) and T.accent or T.panel
             it.BorderSizePixel = 0
             it.Size = UDim2.new(1, -8, 0, 20)
             it.Position = UDim2.fromOffset(4, 4 + (i - 1) * 22)
             it.Font = Enum.Font.Gotham
             it.Text = tostring(vv)
-            it.TextColor3 = (i == idx) and Color3.fromRGB(255,255,255) or Color3.fromRGB(200, 200, 210)
+            it.TextColor3 = (i == idx) and Color3.fromRGB(15, 15, 20) or T.text_sub
             it.TextSize = 11
-            it.Parent = d
+            it.ZIndex = 21
+            it.Parent = list
             local iuc = Instance.new("UICorner"); iuc.CornerRadius = UDim.new(0, 4); iuc.Parent = it
             it.MouseButton1Click:Connect(function()
                 idx = i
-                btn.Text = tostring(vv)
+                val.Text = tostring(vv) .. "  ▾"
                 collapse()
                 if cb then pcall(cb, vv) end
             end)
         end
     end
 
-    btn.MouseButton1Click:Connect(function()
+    val.MouseButton1Click:Connect(function()
         if expanded then collapse() else expand() end
     end)
 end
 
-function UI:addButton(section, name, cb)
+-- BUTTON
+function UI:button_(section, name, cb)
     if not self.ok or not section then return end
     local b = Instance.new("TextButton")
-    b.BackgroundColor3 = Color3.fromRGB(28, 28, 34)
+    b.BackgroundColor3 = T.row
     b.BorderSizePixel = 0
-    b.Size = UDim2.new(1, 0, 0, 26)
+    b.Size = UDim2.new(1, 0, 0, 24)
     b.Font = Enum.Font.GothamBold
     b.Text = name
-    b.TextColor3 = Color3.fromRGB(220, 220, 230)
+    b.TextColor3 = T.text
     b.TextSize = 11
+    b.AutoButtonColor = false
     b.Parent = section
     local uc = Instance.new("UICorner"); uc.CornerRadius = UDim.new(0, 5); uc.Parent = b
+    b.MouseEnter:Connect(function() b.BackgroundColor3 = T.row_hover end)
+    b.MouseLeave:Connect(function() b.BackgroundColor3 = T.row end)
     b.MouseButton1Click:Connect(function() if cb then pcall(cb) end end)
 end
 
-function UI:addLabel(section, name)
+-- LABEL
+function UI:label_(section, text)
     if not self.ok or not section then return end
     local l = Instance.new("TextLabel")
     l.BackgroundTransparency = 1
     l.Size = UDim2.new(1, 0, 0, 0)
     l.AutomaticSize = Enum.AutomaticSize.Y
     l.Font = Enum.Font.Gotham
-    l.Text = name
-    l.TextColor3 = Color3.fromRGB(160, 160, 170)
-    l.TextSize = 11
+    l.Text = text
+    l.TextColor3 = T.muted
+    l.TextSize = 10
     l.TextWrapped = true
     l.TextXAlignment = Enum.TextXAlignment.Left
     l.Parent = section
 end
 
 -- ============================================================
--- round data
+-- CONFIG / STATE
+-- ============================================================
+local C = {
+    aim=false, predict=true, backtrack=false, bt_win=100,
+    auto=false, auto_delay=0, force=false, stand_off=15,
+    priority="murderer", range=300,
+    show_fov=false, fov_r=120,
+    tracer=false, tracer_col=Color3.fromRGB(133,220,255), tracer_dur=1,
+    self_chams=false, self_chams_type="ForceField", self_col=Color3.fromRGB(133,220,255),
+    self_esp=false, self_esp_col=Color3.fromRGB(133,220,255),
+    esp=false, esp_box=false, esp_box_col=Color3.fromRGB(255,60,60),
+    esp_name=false, esp_name_col=Color3.fromRGB(255,255,255),
+    esp_dist=false, esp_dist_col=Color3.fromRGB(200,200,200),
+    esp_hp=false, esp_hp_col=Color3.fromRGB(60,220,60),
+    esp_skel=false, esp_skel_col=Color3.fromRGB(255,255,255),
+    esp_chams=false,
+    esp_col_mur=Color3.fromRGB(255,60,60),
+    esp_col_shf=Color3.fromRGB(0,153,255),
+    esp_col_inn=Color3.fromRGB(200,200,200),
+    aura=false, aura_dist=30, kill_all=false,
+    fly=false, fly_spd=60, noclip=false, bhop=false,
+    inf_jump=false, ws_on=false, ws_val=40, jp_on=false, jp_val=80,
+    fake=false, fake_x=9, fake_y=9, fake_z=9,
+    vs_on=false, vs_type="low",
+    cross=false, cross_gap=4, cross_len=8, cross_th=2,
+    cross_col=Color3.fromRGB(255,255,255),
+    korblox=false, headless=false,
+    fullbright=false, fog=false, fog_col=Color3.fromRGB(192,192,192),
+    fog_start=0, fog_end=1000,
+    time_on=false, time_val=12,
+    skybox_on=false, skybox="Jungle",
+    spec=false, headsit=false, bang=false, bang_speed=3, looptp=false,
+    fling_targets=false, kill_targets=false,
+    tp_x=0, tp_y=0, tp_z=0,
+    alert=false,
+    farm=false,
+}
+
+-- ============================================================
+-- ROUND DATA
 -- ============================================================
 local round_mod = nil
 local function get_round()
@@ -865,7 +940,7 @@ local function target_role(plr)
 end
 
 -- ============================================================
--- backtrack
+-- BACKTRACK
 -- ============================================================
 local BT = {hist={}, keep=2.0}
 local function bt_track()
@@ -906,7 +981,7 @@ local function bt_get(name, ms)
 end
 
 -- ============================================================
--- target
+-- TARGET
 -- ============================================================
 local TGT = {player=nil, char=nil, part=nil, hum=nil}
 local function holds(c, n) return c and c:FindFirstChild(n) ~= nil end
@@ -919,8 +994,7 @@ local function refresh_target()
         if type(d) == "table" then
             for name, info in pairs(d) do
                 if type(info) == "table" and info.Role == "Murderer" and not info.Dead then
-                    found = Players:FindFirstChild(name)
-                    if found then break end
+                    found = Players:FindFirstChild(name); if found then break end
                 end
             end
         end
@@ -947,10 +1021,7 @@ local function refresh_target()
             found = best
         end
     end
-
-    if found ~= TGT.player then
-        TGT.player = found; TGT.char = nil; TGT.part = nil; TGT.hum = nil
-    end
+    if found ~= TGT.player then TGT.player = found; TGT.char = nil; TGT.part = nil; TGT.hum = nil end
     if not found then return end
     local char = found.Character
     if char ~= TGT.char then TGT.char = char; TGT.part = nil; TGT.hum = nil end
@@ -970,7 +1041,7 @@ local function tgt_alive()
 end
 
 -- ============================================================
--- motion
+-- MOTION
 -- ============================================================
 local SN = {n=48, i=0, cnt=0, t={}, p={}, last=nil, lt=0, vel=Vector3.zero}
 for i = 1, SN.n do SN.t[i] = 0; SN.p[i] = Vector3.zero end
@@ -1016,7 +1087,6 @@ local function recent_vel()
     end
     return best
 end
-
 local function track_motion(now)
     if not TGT.part or not TGT.part.Parent then SN.cnt=0; SN.i=0; SN.last=nil; return end
     local pos = TGT.part.Position
@@ -1039,13 +1109,12 @@ local function track_motion(now)
     local h = Vector3.new(SN.vel.X, 0, SN.vel.Z)
     if h.Magnitude > 120 then SN.vel = Vector3.new(SN.vel.X*0.4, SN.vel.Y, SN.vel.Z*0.4) end
 end
-
 local function clear_motion()
     SN.cnt=0; SN.i=0; SN.last=nil; SN.lt=0; SN.vel=Vector3.zero
 end
 
 -- ============================================================
--- ping
+-- PING
 -- ============================================================
 local PING = {seen=false, rtt=0}
 local function sample_ping()
@@ -1058,7 +1127,7 @@ local function sample_ping()
 end
 
 -- ============================================================
--- aim
+-- AIM
 -- ============================================================
 local HIT = {"HumanoidRootPart","UpperTorso","Torso","LowerTorso","Head",
     "RightUpperArm","LeftUpperArm","RightUpperLeg","LeftUpperLeg"}
@@ -1114,7 +1183,6 @@ local function push_origin(cf)
     task.defer(restore_force)
     return true
 end
-
 local function origin_cf()
     local c = LP.Character
     local hrp = c and c:FindFirstChild("HumanoidRootPart")
@@ -1122,7 +1190,6 @@ local function origin_cf()
     local att = hrp:FindFirstChild("GunRaycastAttachment")
     return att and att.WorldCFrame or hrp.CFrame
 end
-
 local function resolve_force()
     if not TGT.part or not TGT.part.Parent then return nil, nil end
     local live = TGT.part.Position
@@ -1148,7 +1215,6 @@ local function get_wsvc()
     if ok and type(m) == "table" then wsvc = m end
     return wsvc
 end
-
 local function install_hooks()
     local m = get_wsvc()
     if not m then return end
@@ -1186,14 +1252,11 @@ local function get_gun()
     local bp = LP:FindFirstChildOfClass("Backpack")
     if bp then local g = bp:FindFirstChild("Gun"); if g then return g, false end end
 end
-
 local last_shot = 0
 local function auto_fire(now)
     if not C.auto or not C.aim or not tgt_alive() then return end
     local role = my_role()
-    if role ~= "Sheriff" and role ~= "Hero" then
-        if not get_gun() then return end
-    end
+    if role ~= "Sheriff" and role ~= "Hero" and not get_gun() then return end
     local gun, eq = get_gun()
     if not gun then return end
     if not eq then
@@ -1230,7 +1293,7 @@ local function auto_fire(now)
 end
 
 -- ============================================================
--- tracer
+-- TRACER
 -- ============================================================
 local tracer_conn, tracer_remote = nil, nil
 local function to_pos(v)
@@ -1289,7 +1352,7 @@ local function connect_tracer()
 end
 
 -- ============================================================
--- self chams
+-- SELF CHAMS / SELF ESP
 -- ============================================================
 local sc_backup = {}
 local sc_hl = nil
@@ -1337,7 +1400,6 @@ local function self_chams_restore()
     if sc_hl then sc_hl:Destroy() sc_hl = nil end
 end
 
--- self esp
 local se_hl = nil
 local function self_esp_update()
     if not C.self_esp then
@@ -1361,7 +1423,7 @@ local function self_esp_update()
 end
 
 -- ============================================================
--- esp (Drawing)
+-- ESP (Drawing)
 -- ============================================================
 local HAS_DR = false
 do
@@ -1422,14 +1484,14 @@ local function esp_chams_clear(plr)
     if h then h:Destroy(); ESP_CHAMS[plr] = nil end
 end
 
-local SKEL_BONES = {
+local SKEL_R15 = {
     {"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
     {"UpperTorso","LeftUpperArm"},{"LeftUpperArm","LeftLowerArm"},{"LeftLowerArm","LeftHand"},
     {"UpperTorso","RightUpperArm"},{"RightUpperArm","RightLowerArm"},{"RightLowerArm","RightHand"},
     {"LowerTorso","LeftUpperLeg"},{"LeftUpperLeg","LeftLowerLeg"},{"LeftLowerLeg","LeftFoot"},
     {"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"},{"RightLowerLeg","RightFoot"},
 }
-local R6_SKEL = {
+local SKEL_R6 = {
     {"Head","Torso"},{"Torso","Left Arm"},{"Left Arm",nil},
     {"Torso","Right Arm"},{"Right Arm",nil},
     {"Torso","Left Leg"},{"Left Leg",nil},
@@ -1439,7 +1501,7 @@ local R6_SKEL = {
 local function esp_update()
     if not HAS_DR then return end
     if not C.esp then
-        for plr, e in pairs(esp_cache) do
+        for _, e in pairs(esp_cache) do
             e.box.Visible=false; e.name.Visible=false; e.dist.Visible=false; e.hp.Visible=false
             for _, l in ipairs(e.skel) do l.Visible = false end
         end
@@ -1489,11 +1551,11 @@ local function esp_update()
                         e.hp.Visible = true
                     else e.hp.Visible = false end
                     if C.esp_skel then
-                        local bones = hum.RigType == Enum.HumanoidRigType.R15 and SKEL_BONES or R6_SKEL
+                        local bones = hum.RigType == Enum.HumanoidRigType.R15 and SKEL_R15 or SKEL_R6
                         local idx = 1
-                        for _, pair in ipairs(bones) do
-                            local a = char:FindFirstChild(pair[1])
-                            local b = pair[2] and char:FindFirstChild(pair[2]) or nil
+                        for _, pr in ipairs(bones) do
+                            local a = char:FindFirstChild(pr[1])
+                            local b = pr[2] and char:FindFirstChild(pr[2]) or nil
                             if a then
                                 local p1 = CAM:WorldToViewportPoint(a.Position)
                                 local p2 = b and CAM:WorldToViewportPoint(b.Position) or CAM:WorldToViewportPoint(a.Position + Vector3.new(0, -1, 0))
@@ -1525,317 +1587,6 @@ local function esp_update()
             esp_chams_clear(plr)
         end
     end
-end
-
--- gun esp
-local gun_hl_cache = {}
-local gun_scan_acc = 0
-local function gun_esp_update(dt)
-    if not C.gun_esp and not C.gun_hl then
-        for obj, hl in pairs(gun_hl_cache) do pcall(function() hl:Destroy() end) end
-        table.clear(gun_hl_cache); return
-    end
-    gun_scan_acc = gun_scan_acc + dt
-    if gun_scan_acc < 0.25 then return end
-    gun_scan_acc = 0
-    local live = {}
-    for _, d in ipairs(WS:GetDescendants()) do
-        if d.Name == "GunDrop" then
-            local part = d:IsA("BasePart") and d or d:FindFirstChildWhichIsA("BasePart", true)
-            if part then
-                live[d] = part
-                if not gun_hl_cache[d] then
-                    local hl = Instance.new("Highlight")
-                    hl.FillTransparency = 1
-                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                    hl.OutlineTransparency = 0
-                    hl.Adornee = d:IsA("BasePart") and d or part
-                    hl.Parent = part
-                    gun_hl_cache[d] = hl
-                end
-                gun_hl_cache[d].OutlineColor = C.gun_hl_col
-                gun_hl_cache[d].Enabled = C.gun_hl
-            end
-        end
-    end
-    for obj, hl in pairs(gun_hl_cache) do
-        if not live[obj] then pcall(function() hl:Destroy() end); gun_hl_cache[obj] = nil end
-    end
-end
-
--- kill aura
-local aura_thread = nil
-local function get_knife()
-    local c = LP.Character
-    if c then local k = c:FindFirstChild("Knife"); if k then return k, true end end
-    local bp = LP:FindFirstChildOfClass("Backpack")
-    if bp then local k = bp:FindFirstChild("Knife"); if k then return k, false end end
-end
-local function knife_stab(knife)
-    local ev = knife:FindFirstChild("Events")
-    local s = ev and ev:FindFirstChild("KnifeStabbed")
-    if s then pcall(function() s:FireServer() end) end
-end
-local function knife_touch(knife, part)
-    local ev = knife:FindFirstChild("Events")
-    local t = ev and ev:FindFirstChild("HandleTouched")
-    if t then pcall(function() t:FireServer(part) end) end
-end
-local function aura_loop()
-    while C.aura or C.kill_all do
-        local role = my_role()
-        if role == "Murderer" then
-            local knife, eq = get_knife()
-            if knife and not eq then
-                local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-                if hum then pcall(function() hum:EquipTool(knife) end) end
-            elseif knife then
-                local myhrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-                local victims = {}
-                for _, plr in ipairs(Players:GetPlayers()) do
-                    if plr == LP then continue end
-                    local c = plr.Character
-                    local hu = c and c:FindFirstChildOfClass("Humanoid")
-                    local p = c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Head"))
-                    if hu and hu.Health > 0 and p then
-                        if C.kill_all then victims[#victims+1] = p
-                        elseif C.aura and myhrp and (p.Position - myhrp.Position).Magnitude <= C.aura_dist then victims[#victims+1] = p end
-                    end
-                end
-                if #victims > 0 then
-                    knife_stab(knife)
-                    for _, v in ipairs(victims) do knife_touch(knife, v) end
-                end
-            end
-        end
-        task.wait()
-    end
-    aura_thread = nil
-end
-local function start_aura()
-    if not aura_thread then aura_thread = task.spawn(aura_loop) end
-end
-
--- fly
-local fly_conn = nil
-local fly_grav = WS.Gravity
-local function start_fly()
-    if fly_conn then return end
-    fly_grav = WS.Gravity
-    WS.Gravity = 0
-    fly_conn = RunService.RenderStepped:Connect(function()
-        if not C.fly then return end
-        local c = LP.Character
-        local hrp = c and c:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-        local dir = Vector3.zero
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + CAM.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - CAM.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - CAM.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + CAM.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.yAxis end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.yAxis end
-        if dir.Magnitude > 0 then dir = dir.Unit * C.fly_spd end
-        hrp.AssemblyLinearVelocity = dir
-    end)
-end
-local function stop_fly()
-    if fly_conn then fly_conn:Disconnect(); fly_conn = nil end
-    WS.Gravity = fly_grav
-end
-
--- noclip
-local noclip_cache = {}
-RunService.Stepped:Connect(function()
-    if not C.noclip then
-        for p, v in pairs(noclip_cache) do if p and p.Parent then pcall(function() p.CanCollide = v end) end end
-        table.clear(noclip_cache)
-        return
-    end
-    local c = LP.Character
-    if not c then return end
-    for _, p in ipairs(c:GetDescendants()) do
-        if p:IsA("BasePart") and p.CanCollide then
-            if noclip_cache[p] == nil then noclip_cache[p] = true end
-            p.CanCollide = false
-        end
-    end
-end)
-
--- jump/bhop/movement
-UserInputService.JumpRequest:Connect(function()
-    if C.inf_jump then
-        local c = LP.Character
-        local hu = c and c:FindFirstChildOfClass("Humanoid")
-        if hu then hu:ChangeState(Enum.HumanoidStateType.Jumping) end
-    end
-end)
-
-RunService.Heartbeat:Connect(function()
-    local c = LP.Character
-    local hu = c and c:FindFirstChildOfClass("Humanoid")
-    if not hu then return end
-    if C.ws_on and hu.WalkSpeed ~= C.ws_val then hu.WalkSpeed = C.ws_val end
-    if C.jp_on then
-        if not hu.UseJumpPower then hu.UseJumpPower = true end
-        if hu.JumpPower ~= C.jp_val then hu.JumpPower = C.jp_val end
-    end
-    if C.bhop and hu:GetState() == Enum.HumanoidStateType.Landed and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-        hu.Jump = true
-    end
-end)
-
--- fake pos
-local fake_conn = nil
-local fake_orig_gravity = nil
-local function start_fake()
-    if fake_conn then return end
-    fake_orig_gravity = WS.FallenPartsDestroyHeight
-    pcall(function() WS.FallenPartsDestroyHeight = -9e9 end)
-    fake_conn = RunService.Heartbeat:Connect(function()
-        if not C.fake then return end
-        local c = LP.Character
-        local hrp = c and c:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-        pcall(function() sethiddenproperty(hrp, "NetworkIsSleeping", false) end)
-        pcall(function()
-            hrp.CFrame = CFrame.new(
-                (math.random()*2-1) * C.fake_x * 1e3,
-                -(math.random()) * C.fake_y * 1e3,
-                (math.random()*2-1) * C.fake_z * 1e3
-            )
-        end)
-    end)
-end
-local function stop_fake()
-    if fake_conn then fake_conn:Disconnect(); fake_conn = nil end
-    if fake_orig_gravity then pcall(function() WS.FallenPartsDestroyHeight = fake_orig_gravity end) end
-end
-
--- velocity spoof
-local vs_conn = nil
-local function start_vs()
-    if vs_conn then return end
-    vs_conn = RunService.Heartbeat:Connect(function()
-        if not C.vs_on then return end
-        local c = LP.Character
-        local hrp = c and c:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-        local v
-        if C.vs_type == "high" then
-            v = Vector3.new(math.random(1,2)==1 and -16384 or 16384, math.random(1,2)==1 and -16384 or 16384, math.random(1,2)==1 and -16384 or 16384)
-        elseif C.vs_type == "y high" then v = Vector3.new(0, 16384, 0)
-        elseif C.vs_type == "zero" then v = Vector3.zero
-        else v = Vector3.new(math.random(1,2)==1 and -300 or 300, math.random(1,2)==1 and -300 or 300, math.random(1,2)==1 and -300 or 300) end
-        pcall(function() hrp.AssemblyLinearVelocity = v end)
-    end)
-end
-
--- korblox/headless
-local kb_backup, hl_backup = {}, {}
-local function korblox_apply()
-    local c = LP.Character
-    if not c then return end
-    local ru = c:FindFirstChild("RightUpperLeg")
-    local rl = c:FindFirstChild("RightLowerLeg")
-    local rf = c:FindFirstChild("RightFoot")
-    if ru then kb_backup.RU = {MeshId=ru.MeshId, TextureID=ru.TextureID}
-        pcall(function() ru.MeshId = "rbxassetid://902942096"; ru.TextureID = "rbxassetid://902843398" end)
-    end
-    if rl then kb_backup.RL = {MeshId=rl.MeshId, Transparency=rl.Transparency}
-        pcall(function() rl.MeshId = "rbxassetid://902942093"; rl.Transparency = 1 end)
-    end
-    if rf then kb_backup.RF = {MeshId=rf.MeshId, Transparency=rf.Transparency}
-        pcall(function() rf.MeshId = "rbxassetid://902942089"; rf.Transparency = 1 end)
-    end
-end
-local function korblox_restore()
-    local c = LP.Character
-    if not c then return end
-    local ru = c:FindFirstChild("RightUpperLeg")
-    local rl = c:FindFirstChild("RightLowerLeg")
-    local rf = c:FindFirstChild("RightFoot")
-    if ru and kb_backup.RU then pcall(function() ru.MeshId = kb_backup.RU.MeshId or ""; ru.TextureID = kb_backup.RU.TextureID or "" end) end
-    if rl and kb_backup.RL then pcall(function() rl.MeshId = kb_backup.RL.MeshId or ""; rl.Transparency = kb_backup.RL.Transparency or 0 end) end
-    if rf and kb_backup.RF then pcall(function() rf.MeshId = kb_backup.RF.MeshId or ""; rf.Transparency = kb_backup.RF.Transparency or 0 end) end
-    kb_backup = {}
-end
-local function headless_apply()
-    local c = LP.Character
-    if not c then return end
-    local head = c:FindFirstChild("Head")
-    if not head then return end
-    hl_backup = {trans = head.Transparency, mesh = head.MeshId, tex = head.TextureID}
-    pcall(function()
-        head.MeshId = "rbxassetid://6686307858"
-        head.TextureID = "rbxassetid://6686307858"
-        head.Transparency = 1
-    end)
-    for _, d in ipairs(head:GetDescendants()) do
-        if d:IsA("BasePart") or d:IsA("Decal") then pcall(function() d.Transparency = 1 end) end
-    end
-end
-local function headless_restore()
-    local c = LP.Character
-    if not c then return end
-    local head = c:FindFirstChild("Head")
-    if head and hl_backup.trans then
-        pcall(function()
-            head.Transparency = hl_backup.trans
-            if hl_backup.mesh then head.MeshId = hl_backup.mesh end
-            if hl_backup.tex then head.TextureID = hl_backup.tex end
-        end)
-    end
-    hl_backup = {}
-end
-
--- world
-local world_orig = {
-    FogColor=Lighting.FogColor, FogStart=Lighting.FogStart, FogEnd=Lighting.FogEnd,
-    Brightness=Lighting.Brightness, ClockTime=Lighting.ClockTime,
-    GlobalShadows=Lighting.GlobalShadows,
-    Ambient=Lighting.Ambient, OutdoorAmbient=Lighting.OutdoorAmbient,
-    Exposure=Lighting.ExposureCompensation,
-}
-local sky_created = nil
-local skyboxes = {
-    ["Jungle"] = {
-        SkyboxBk="http://www.roblox.com/asset/?id=214399891",
-        SkyboxDn="http://www.roblox.com/asset/?id=214399887",
-        SkyboxFt="http://www.roblox.com/asset/?id=214399894",
-        SkyboxLf="http://www.roblox.com/asset/?id=214405668",
-        SkyboxRt="http://www.roblox.com/asset/?id=214399899",
-        SkyboxUp="http://www.roblox.com/asset/?id=214399889",
-    },
-    ["Blossom"] = {
-        SkyboxBk="http://www.roblox.com/asset/?id=271042516",
-        SkyboxDn="http://www.roblox.com/asset/?id=271077243",
-        SkyboxFt="http://www.roblox.com/asset/?id=271042556",
-        SkyboxLf="http://www.roblox.com/asset/?id=271042310",
-        SkyboxRt="http://www.roblox.com/asset/?id=271042467",
-        SkyboxUp="http://www.roblox.com/asset/?id=271077958",
-    },
-    ["Red night"] = {
-        SkyboxBk="http://www.roblox.com/Asset/?ID=401664839",
-        SkyboxDn="http://www.roblox.com/Asset/?ID=401664862",
-        SkyboxFt="http://www.roblox.com/Asset/?ID=401664960",
-        SkyboxLf="http://www.roblox.com/Asset/?ID=401664881",
-        SkyboxRt="http://www.roblox.com/Asset/?ID=401664901",
-        SkyboxUp="http://www.roblox.com/Asset/?ID=401664936",
-    },
-}
-local function apply_skybox(name)
-    if sky_created then pcall(function() sky_created:Destroy() end); sky_created = nil end
-    local data = skyboxes[name]
-    if not data then return end
-    local sky = Instance.new("Sky")
-    sky.Name = "ShitaroSky"
-    for k, v in pairs(data) do pcall(function() sky[k] = v end) end
-    sky.Parent = Lighting
-    sky_created = sky
-end
-local function clear_skybox()
-    if sky_created then pcall(function() sky_created:Destroy() end); sky_created = nil end
 end
 
 -- crosshair
@@ -1886,14 +1637,212 @@ if HAS_DR then
     end
 end
 
--- target actions
+-- ============================================================
+-- PLAYER EXTRAS
+-- ============================================================
 local function my_hrp() local c = LP.Character; return c and c:FindFirstChild("HumanoidRootPart") end
 local function tgt_hrp(p) local c = p and p.Character; return c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Head")) end
 
+-- fly
+local fly_conn, fly_grav = nil, WS.Gravity
+local function start_fly()
+    if fly_conn then return end
+    fly_grav = WS.Gravity; WS.Gravity = 0
+    fly_conn = RunService.RenderStepped:Connect(function()
+        if not C.fly then return end
+        local hrp = my_hrp(); if not hrp then return end
+        local dir = Vector3.zero
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + CAM.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - CAM.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - CAM.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + CAM.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.yAxis end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.yAxis end
+        if dir.Magnitude > 0 then dir = dir.Unit * C.fly_spd end
+        hrp.AssemblyLinearVelocity = dir
+    end)
+end
+local function stop_fly()
+    if fly_conn then fly_conn:Disconnect(); fly_conn = nil end
+    WS.Gravity = fly_grav
+end
+
+-- noclip
+local noclip_cache = {}
+RunService.Stepped:Connect(function()
+    if not C.noclip then
+        for p, v in pairs(noclip_cache) do if p and p.Parent then pcall(function() p.CanCollide = v end) end end
+        table.clear(noclip_cache); return
+    end
+    local c = LP.Character; if not c then return end
+    for _, p in ipairs(c:GetDescendants()) do
+        if p:IsA("BasePart") and p.CanCollide then
+            if noclip_cache[p] == nil then noclip_cache[p] = true end
+            p.CanCollide = false
+        end
+    end
+end)
+
+-- jump / bhop / ws / jp
+UserInputService.JumpRequest:Connect(function()
+    if C.inf_jump then
+        local hu = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+        if hu then hu:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+RunService.Heartbeat:Connect(function()
+    local hu = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+    if not hu then return end
+    if C.ws_on and hu.WalkSpeed ~= C.ws_val then hu.WalkSpeed = C.ws_val end
+    if C.jp_on then
+        if not hu.UseJumpPower then hu.UseJumpPower = true end
+        if hu.JumpPower ~= C.jp_val then hu.JumpPower = C.jp_val end
+    end
+    if C.bhop and hu:GetState() == Enum.HumanoidStateType.Landed and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+        hu.Jump = true
+    end
+end)
+
+-- fake pos / vel spoof
+local fake_conn, fake_g = nil, nil
+local function start_fake()
+    if fake_conn then return end
+    fake_g = WS.FallenPartsDestroyHeight
+    pcall(function() WS.FallenPartsDestroyHeight = -9e9 end)
+    fake_conn = RunService.Heartbeat:Connect(function()
+        if not C.fake then return end
+        local hrp = my_hrp(); if not hrp then return end
+        pcall(function() sethiddenproperty(hrp, "NetworkIsSleeping", false) end)
+        pcall(function()
+            hrp.CFrame = CFrame.new(
+                (math.random()*2-1)*C.fake_x*1e3,
+                -(math.random())*C.fake_y*1e3,
+                (math.random()*2-1)*C.fake_z*1e3
+            )
+        end)
+    end)
+end
+local function stop_fake()
+    if fake_conn then fake_conn:Disconnect(); fake_conn = nil end
+    if fake_g then pcall(function() WS.FallenPartsDestroyHeight = fake_g end) end
+end
+local vs_conn = nil
+local function start_vs()
+    if vs_conn then return end
+    vs_conn = RunService.Heartbeat:Connect(function()
+        if not C.vs_on then return end
+        local hrp = my_hrp(); if not hrp then return end
+        local v
+        if C.vs_type == "high" then
+            v = Vector3.new(math.random(1,2)==1 and -16384 or 16384, math.random(1,2)==1 and -16384 or 16384, math.random(1,2)==1 and -16384 or 16384)
+        elseif C.vs_type == "y high" then v = Vector3.new(0, 16384, 0)
+        elseif C.vs_type == "zero" then v = Vector3.zero
+        else v = Vector3.new(math.random(1,2)==1 and -300 or 300, math.random(1,2)==1 and -300 or 300, math.random(1,2)==1 and -300 or 300) end
+        pcall(function() hrp.AssemblyLinearVelocity = v end)
+    end)
+end
+
+-- korblox / headless
+local kb_backup, hl_backup = {}, {}
+local function korblox_apply()
+    local c = LP.Character; if not c then return end
+    local ru = c:FindFirstChild("RightUpperLeg")
+    local rl = c:FindFirstChild("RightLowerLeg")
+    local rf = c:FindFirstChild("RightFoot")
+    if ru then kb_backup.RU = {MeshId=ru.MeshId, TextureID=ru.TextureID}
+        pcall(function() ru.MeshId = "rbxassetid://902942096"; ru.TextureID = "rbxassetid://902843398" end)
+    end
+    if rl then kb_backup.RL = {MeshId=rl.MeshId, Transparency=rl.Transparency}
+        pcall(function() rl.MeshId = "rbxassetid://902942093"; rl.Transparency = 1 end)
+    end
+    if rf then kb_backup.RF = {MeshId=rf.MeshId, Transparency=rf.Transparency}
+        pcall(function() rf.MeshId = "rbxassetid://902942089"; rf.Transparency = 1 end)
+    end
+end
+local function korblox_restore()
+    local c = LP.Character; if not c then return end
+    local ru, rl, rf = c:FindFirstChild("RightUpperLeg"), c:FindFirstChild("RightLowerLeg"), c:FindFirstChild("RightFoot")
+    if ru and kb_backup.RU then pcall(function() ru.MeshId = kb_backup.RU.MeshId or ""; ru.TextureID = kb_backup.RU.TextureID or "" end) end
+    if rl and kb_backup.RL then pcall(function() rl.MeshId = kb_backup.RL.MeshId or ""; rl.Transparency = kb_backup.RL.Transparency or 0 end) end
+    if rf and kb_backup.RF then pcall(function() rf.MeshId = kb_backup.RF.MeshId or ""; rf.Transparency = kb_backup.RF.Transparency or 0 end) end
+    kb_backup = {}
+end
+local function headless_apply()
+    local c = LP.Character; if not c then return end
+    local head = c:FindFirstChild("Head"); if not head then return end
+    hl_backup = {trans = head.Transparency, mesh = head.MeshId, tex = head.TextureID}
+    pcall(function()
+        head.MeshId = "rbxassetid://6686307858"
+        head.TextureID = "rbxassetid://6686307858"
+        head.Transparency = 1
+    end)
+    for _, d in ipairs(head:GetDescendants()) do
+        if d:IsA("BasePart") or d:IsA("Decal") then pcall(function() d.Transparency = 1 end) end
+    end
+end
+local function headless_restore()
+    local c = LP.Character; if not c then return end
+    local head = c:FindFirstChild("Head")
+    if head and hl_backup.trans then
+        pcall(function()
+            head.Transparency = hl_backup.trans
+            if hl_backup.mesh then head.MeshId = hl_backup.mesh end
+            if hl_backup.tex then head.TextureID = hl_backup.tex end
+        end)
+    end
+    hl_backup = {}
+end
+
+-- world
+local world_orig = {
+    FogColor=Lighting.FogColor, FogStart=Lighting.FogStart, FogEnd=Lighting.FogEnd,
+    Brightness=Lighting.Brightness, ClockTime=Lighting.ClockTime,
+    GlobalShadows=Lighting.GlobalShadows,
+    Ambient=Lighting.Ambient, OutdoorAmbient=Lighting.OutdoorAmbient,
+    Exposure=Lighting.ExposureCompensation,
+}
+local sky_created = nil
+local skyboxes = {
+    ["Jungle"] = {
+        SkyboxBk="http://www.roblox.com/asset/?id=214399891",
+        SkyboxDn="http://www.roblox.com/asset/?id=214399887",
+        SkyboxFt="http://www.roblox.com/asset/?id=214399894",
+        SkyboxLf="http://www.roblox.com/asset/?id=214405668",
+        SkyboxRt="http://www.roblox.com/asset/?id=214399899",
+        SkyboxUp="http://www.roblox.com/asset/?id=214399889",
+    },
+    ["Blossom"] = {
+        SkyboxBk="http://www.roblox.com/asset/?id=271042516",
+        SkyboxDn="http://www.roblox.com/asset/?id=271077243",
+        SkyboxFt="http://www.roblox.com/asset/?id=271042556",
+        SkyboxLf="http://www.roblox.com/asset/?id=271042310",
+        SkyboxRt="http://www.roblox.com/asset/?id=271042467",
+        SkyboxUp="http://www.roblox.com/asset/?id=271077958",
+    },
+    ["Red night"] = {
+        SkyboxBk="http://www.roblox.com/Asset/?ID=401664839",
+        SkyboxDn="http://www.roblox.com/Asset/?ID=401664862",
+        SkyboxFt="http://www.roblox.com/Asset/?ID=401664960",
+        SkyboxLf="http://www.roblox.com/Asset/?ID=401664881",
+        SkyboxRt="http://www.roblox.com/Asset/?ID=401664901",
+        SkyboxUp="http://www.roblox.com/Asset/?ID=401664936",
+    },
+}
+local function apply_skybox(name)
+    if sky_created then pcall(function() sky_created:Destroy() end); sky_created = nil end
+    local data = skyboxes[name]; if not data then return end
+    local sky = Instance.new("Sky"); sky.Name = "ShitaroSky"
+    for k, v in pairs(data) do pcall(function() sky[k] = v end) end
+    sky.Parent = Lighting; sky_created = sky
+end
+local function clear_skybox()
+    if sky_created then pcall(function() sky_created:Destroy() end); sky_created = nil end
+end
+
+-- target actions
 RunService.RenderStepped:Connect(function()
     if not C.spec then return end
-    local t = TGT.player
-    if not t then return end
+    local t = TGT.player; if not t then return end
     local th = t.Character and t.Character:FindFirstChildOfClass("Humanoid")
     local thrp = tgt_hrp(t)
     if thrp then CAM.CameraSubject = th or thrp end
@@ -1903,28 +1852,20 @@ local bang_track = nil
 local function stop_bang()
     if bang_track then pcall(function() bang_track:Stop() end); bang_track = nil end
 end
-
 RunService.Heartbeat:Connect(function()
     if C.headsit then
-        local thrp = tgt_hrp(TGT.player)
-        local hrp = my_hrp()
+        local thrp = tgt_hrp(TGT.player); local hrp = my_hrp()
         local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-        if thrp and hrp and hum then
-            hum.Sit = true
-            hrp.CFrame = thrp.CFrame * CFrame.new(0, 1.6, 0.4)
-        end
+        if thrp and hrp and hum then hum.Sit = true; hrp.CFrame = thrp.CFrame * CFrame.new(0, 1.6, 0.4) end
     end
     if C.looptp then
-        local thrp = tgt_hrp(TGT.player)
-        local hrp = my_hrp()
+        local thrp = tgt_hrp(TGT.player); local hrp = my_hrp()
         if thrp and hrp then hrp.CFrame = thrp.CFrame + Vector3.new(C.tp_x, C.tp_y, C.tp_z) end
     end
 end)
-
 RunService.Stepped:Connect(function()
     if not C.bang then stop_bang(); return end
-    local thrp = tgt_hrp(TGT.player)
-    local hrp = my_hrp()
+    local thrp = tgt_hrp(TGT.player); local hrp = my_hrp()
     local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
     if thrp and hrp and hum then
         if not bang_track then
@@ -1959,8 +1900,7 @@ local function do_fling(tp)
     pcall(function() WS.FallenPartsDestroyHeight = 0/0 end)
     local se = hum and hum:GetStateEnabled(Enum.HumanoidStateType.Seated)
     if hum then hum:SetStateEnabled(Enum.HumanoidStateType.Seated, false) end
-    local tm = tick()
-    local ang = 0
+    local tm = tick(); local ang = 0
     repeat
         if hrp and th then
             ang = ang + 100
@@ -1984,85 +1924,65 @@ local function start_fling_target()
     if fling_thread then return end
     fling_thread = task.spawn(function()
         while C.fling_targets do
-            if TGT.player and TGT.player.Character and my_hrp() then do_fling(TGT.player)
-            else task.wait(0.3) end
+            if TGT.player and TGT.player.Character and my_hrp() then do_fling(TGT.player) else task.wait(0.3) end
             task.wait()
         end
         fling_thread = nil
     end)
 end
 
--- kill targets
-local kill_thread = nil
-local function start_kill_targets()
-    if kill_thread then return end
-    kill_thread = task.spawn(function()
-        while C.kill_targets do
-            if my_role() == "Murderer" and TGT.player then
-                local knife, eq = get_knife()
-                if knife then
-                    if not eq then
-                        local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-                        if hum then pcall(function() hum:EquipTool(knife) end) end
-                    else
-                        local c = TGT.player.Character
-                        local hu = c and c:FindFirstChildOfClass("Humanoid")
-                        local p = c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Head"))
-                        if hu and hu.Health > 0 and p then
-                            knife_stab(knife)
-                            knife_touch(knife, p)
-                        end
+-- kill aura
+local aura_thread = nil
+local function get_knife()
+    local c = LP.Character
+    if c then local k = c:FindFirstChild("Knife"); if k then return k, true end end
+    local bp = LP:FindFirstChildOfClass("Backpack")
+    if bp then local k = bp:FindFirstChild("Knife"); if k then return k, false end end
+end
+local function knife_stab(k)
+    local ev = k:FindFirstChild("Events"); local s = ev and ev:FindFirstChild("KnifeStabbed")
+    if s then pcall(function() s:FireServer() end) end
+end
+local function knife_touch(k, part)
+    local ev = k:FindFirstChild("Events"); local t = ev and ev:FindFirstChild("HandleTouched")
+    if t then pcall(function() t:FireServer(part) end) end
+end
+local function aura_loop()
+    while C.aura or C.kill_all do
+        if my_role() == "Murderer" then
+            local knife, eq = get_knife()
+            if knife and not eq then
+                local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+                if hum then pcall(function() hum:EquipTool(knife) end) end
+            elseif knife then
+                local myhrp = my_hrp()
+                local victims = {}
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr == LP then continue end
+                    local c = plr.Character
+                    local hu = c and c:FindFirstChildOfClass("Humanoid")
+                    local p = c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Head"))
+                    if hu and hu.Health > 0 and p then
+                        if C.kill_all then victims[#victims+1] = p
+                        elseif C.aura and myhrp and (p.Position - myhrp.Position).Magnitude <= C.aura_dist then victims[#victims+1] = p end
                     end
                 end
+                if #victims > 0 then
+                    knife_stab(knife)
+                    for _, v in ipairs(victims) do knife_touch(knife, v) end
+                end
             end
-            task.wait()
         end
-        kill_thread = nil
-    end)
+        task.wait()
+    end
+    aura_thread = nil
+end
+local function start_aura()
+    if not aura_thread then aura_thread = task.spawn(aura_loop) end
 end
 
--- auto farm
-local farm_on = false
-local farm_noclip_cache = {}
-RunService.Stepped:Connect(function(_, dt)
-    if not farm_on then
-        for p, v in pairs(farm_noclip_cache) do if p and p.Parent then pcall(function() p.CanCollide = v end) end end
-        table.clear(farm_noclip_cache); return
-    end
-    local c = LP.Character
-    local hrp = c and c:FindFirstChild("HumanoidRootPart")
-    local hu = c and c:FindFirstChildOfClass("Humanoid")
-    if not hrp or not hu or hu.Health <= 0 then return end
-    for _, p in ipairs(c:GetDescendants()) do
-        if p:IsA("BasePart") and p.CanCollide then
-            if farm_noclip_cache[p] == nil then farm_noclip_cache[p] = true end
-            p.CanCollide = false
-        end
-    end
-    local coins = CollectionService:GetTagged("CoinVisual")
-    local best, bd = nil, math.huge
-    for _, v in ipairs(coins) do
-        if v and v.Parent and v:IsA("BasePart") then
-            if not v:GetAttribute("Collected") and not v:GetAttribute("Delete") then
-                local d = (v.Position - hrp.Position).Magnitude
-                if d < bd then best, bd = v, d end
-            end
-        end
-    end
-    if best then
-        local d = best.Position - hrp.Position
-        local step = math.min(C.range, 23 * dt)
-        local np = hrp.Position + (d.Magnitude > 0 and d.Unit * step or Vector3.zero)
-        pcall(function() hrp.CFrame = CFrame.new(np); hrp.AssemblyLinearVelocity = Vector3.zero end)
-        if (best.Position - hrp.Position).Magnitude <= 6 and type(firetouchinterest) == "function" then
-            pcall(firetouchinterest, hrp, best, 0)
-            pcall(firetouchinterest, hrp, best, 1)
-        end
-    end
-end)
-
 -- ============================================================
--- main loops
+-- MAIN LOOPS
 -- ============================================================
 RunService.Heartbeat:Connect(function()
     pcall(function()
@@ -2072,9 +1992,9 @@ RunService.Heartbeat:Connect(function()
     end)
 end)
 
-RunService.RenderStepped:Connect(function(dt)
+RunService.RenderStepped:Connect(function()
     pcall(function()
-        esp_update(); self_esp_update(); gun_esp_update(dt); cross_update()
+        esp_update(); self_esp_update(); cross_update()
         if fov_circle then
             if C.show_fov then
                 local m = UserInputService:GetMouseLocation()
@@ -2103,117 +2023,160 @@ task.spawn(function()
     end
 end)
 
-LP.Idled:Connect(function()
-    if C.alert then
-        pcall(function() VirtualUser:CaptureController(); VirtualUser:ClickButton2(Vector2.new()) end)
-    end
-end)
-
 -- ============================================================
--- MENU
+-- MENU (SHITARO STYLE)
 -- ============================================================
-local M = UI.new("SHITARO")
+local M = UI.new({title = "SHITARO"})
 
 if M.ok then
-    -- AIM tab
-    local aim_t = M:addTab("aim", "aim")
-    local aim_l = M:addSection(aim_t, "silent", "left")
-    M:addToggle(aim_l, "enable aim", false, function(v) C.aim = v end)
-    M:addToggle(aim_l, "prediction", true, function(v) C.predict = v end)
-    M:addToggle(aim_l, "backtrack", false, function(v) C.backtrack = v end)
-    M:addSlider(aim_l, "bt window", 100, 20, 250, 0, function(v) C.bt_win = v end, "ms")
-    M:addToggle(aim_l, "force shoot", false, function(v) C.force = v; if not v then restore_force() end end)
-    M:addSlider(aim_l, "stand off", 15, 0, 40, 0, function(v) C.stand_off = v end, "st")
-    M:addToggle(aim_l, "auto shoot", false, function(v) C.auto = v end)
-    M:addSlider(aim_l, "delay", 0, 0, 500, 0, function(v) C.auto_delay = v / 1000 end, "ms")
-    local aim_r = M:addSection(aim_t, "target", "right")
-    M:addDropdown(aim_r, "priority", {"murderer","nearest","sheriff"}, "murderer", function(v) C.priority = v end)
-    M:addSlider(aim_r, "max range", 300, 50, 800, 0, function(v) C.range = v end, "st")
-    M:addToggle(aim_r, "show fov", false, function(v) C.show_fov = v end)
-    M:addSlider(aim_r, "fov radius", 120, 20, 500, 0, function(v) C.fov_r = v end, "px")
+    -- ========================================
+    -- GAME TAB
+    -- ========================================
+    local game_t = M:tab({name = "game", icon = TAB_ICONS.game})
+    local silent_l = M:section(game_t, {name = "silent", side = "left"})
+    M:toggle_(silent_l, "silent", false, function(v) C.aim = v end)
+    M:toggle_(silent_l, "prediction", true, function(v) C.predict = v end)
+    M:toggle_(silent_l, "backtrack", false, function(v) C.backtrack = v end)
+    M:slider_(silent_l, "bt window", 100, 20, 250, 0, function(v) C.bt_win = v end, "ms")
+    M:toggle_(silent_l, "force shoot", false, function(v) C.force = v; if not v then restore_force() end end)
+    M:slider_(silent_l, "origin", 15, 0, 40, 0, function(v) C.stand_off = v end, "st")
+    M:toggle_(silent_l, "auto shoot", false, function(v) C.auto = v end)
+    M:slider_(silent_l, "delay", 0, 0, 500, 0, function(v) C.auto_delay = v/1000 end, "ms")
 
-    -- MURDER tab
-    local km_t = M:addTab("murder", "murder")
-    local km_l = M:addSection(km_t, "kill aura", "left")
-    M:addToggle(km_l, "kill aura", false, function(v) C.aura = v; if v then start_aura() end end)
-    M:addSlider(km_l, "distance", 30, 5, 60, 0, function(v) C.aura_dist = v end, "st")
-    M:addToggle(km_l, "kill all", false, function(v) C.kill_all = v; if v then start_aura() end end)
-    local km_r = M:addSection(km_t, "targets", "right")
-    M:addToggle(km_r, "kill targets", false, function(v) C.kill_targets = v; if v then start_kill_targets() end end)
-    M:addToggle(km_r, "fling targets", false, function(v) C.fling_targets = v; if v then start_fling_target() end end)
+    local murder_c = M:section(game_t, {name = "murder", side = "center"})
+    M:toggle_(murder_c, "kill aura", false, function(v) C.aura = v; if v then start_aura() end end)
+    M:slider_(murder_c, "distance", 30, 5, 60, 0, function(v) C.aura_dist = v end, "st")
+    M:toggle_(murder_c, "kill all", false, function(v) C.kill_all = v; if v then start_aura() end end)
 
-    -- TRACER
-    local tr_t = M:addTab("tracer", "tracer")
-    local tr_l = M:addSection(tr_t, "bullet tracer", "left")
-    M:addToggle(tr_l, "enable", false, function(v) C.tracer = v; if v then connect_tracer() end end)
-    M:addColor(tr_l, "color", C.tracer_col, function(c) C.tracer_col = c end)
-    M:addSlider(tr_l, "duration", 1.0, 0.1, 5.0, 1, function(v) C.tracer_dur = v end, "s")
+    local autos_r = M:section(game_t, {name = "autos", side = "right"})
+    M:toggle_(autos_r, "auto farm", false, function(v) C.farm = v end)
+    M:toggle_(autos_r, "auto reset", false, function(v) end)
+    M:toggle_(autos_r, "grab gun", false, function(v) end)
 
-    -- CHAMS
-    local ch_t = M:addTab("chams", "chams")
-    local ch_l = M:addSection(ch_t, "self", "left")
-    M:addToggle(ch_l, "enable", false, function(v) C.self_chams = v; if v then self_chams_apply() else self_chams_restore() end end)
-    M:addDropdown(ch_l, "mode", {"ForceField","Neon","Flat","Glass","Highlight"}, C.self_chams_type, function(v)
+    -- ========================================
+    -- AIM TAB
+    -- ========================================
+    local aim_t = M:tab({name = "aim", icon = TAB_ICONS.aim})
+    local tgt_l = M:section(aim_t, {name = "target", side = "left"})
+    M:dropdown_(tgt_l, "priority", {"murderer", "nearest", "sheriff"}, "murderer", function(v) C.priority = v end)
+    M:slider_(tgt_l, "max range", 300, 50, 800, 0, function(v) C.range = v end, "st")
+    M:toggle_(tgt_l, "show fov", false, function(v) C.show_fov = v end)
+    M:slider_(tgt_l, "fov radius", 120, 20, 500, 0, function(v) C.fov_r = v end, "px")
+
+    local misc_aim = M:section(aim_t, {name = "extra", side = "right"})
+    M:toggle_(misc_aim, "velocity check", false, function(v) C.fling_vel = v end)
+    M:toggle_(misc_aim, "fling targets", false, function(v) C.fling_targets = v; if v then start_fling_target() end end)
+    M:toggle_(misc_aim, "kill targets", false, function(v) C.kill_targets = v end)
+
+    -- ========================================
+    -- TRACER TAB
+    -- ========================================
+    local tr_t = M:tab({name = "tracer", icon = TAB_ICONS.tracer})
+    local tr_l = M:section(tr_t, {name = "bullet tracer", side = "left"})
+    M:toggle_(tr_l, "enable", false, function(v) C.tracer = v; if v then connect_tracer() end end)
+    M:color_(tr_l, "color", C.tracer_col, function(c) C.tracer_col = c end)
+    M:slider_(tr_l, "duration", 1.0, 0.1, 5.0, 1, function(v) C.tracer_dur = v end, "s")
+
+    -- ========================================
+    -- CHAMS TAB
+    -- ========================================
+    local ch_t = M:tab({name = "chams", icon = TAB_ICONS.chams})
+    local self_l = M:section(ch_t, {name = "self chams", side = "left"})
+    M:toggle_(self_l, "enable", false, function(v) C.self_chams = v; if v then self_chams_apply() else self_chams_restore() end end)
+    M:dropdown_(self_l, "mode", {"ForceField", "Neon", "Flat", "Glass", "Highlight"}, "ForceField", function(v)
         C.self_chams_type = v
         if C.self_chams then self_chams_restore(); self_chams_apply() end
     end)
-    M:addColor(ch_l, "color", C.self_col, function(c) C.self_col = c; if C.self_chams then self_chams_apply() end end)
-    local ch_r = M:addSection(ch_t, "self esp", "right")
-    M:addToggle(ch_r, "enable", false, function(v) C.self_esp = v; if not v and se_hl then se_hl:Destroy(); se_hl = nil end end)
-    M:addColor(ch_r, "color", C.self_esp_col, function(c) C.self_esp_col = c end)
+    M:color_(self_l, "color", C.self_col, function(c) C.self_col = c; if C.self_chams then self_chams_apply() end end)
 
-    -- ESP
-    local esp_t = M:addTab("esp", "esp")
-    local esp_l = M:addSection(esp_t, "player", "left")
-    M:addToggle(esp_l, "enable esp", false, function(v) C.esp = v end)
-    M:addToggle(esp_l, "box", false, function(v) C.esp_box = v end)
-    M:addColor(esp_l, "box color", C.esp_box_col, function(c) C.esp_box_col = c end)
-    M:addToggle(esp_l, "name", false, function(v) C.esp_name = v end)
-    M:addColor(esp_l, "name color", C.esp_name_col, function(c) C.esp_name_col = c end)
-    M:addToggle(esp_l, "distance", false, function(v) C.esp_dist = v end)
-    M:addColor(esp_l, "dist color", C.esp_dist_col, function(c) C.esp_dist_col = c end)
-    M:addToggle(esp_l, "health", false, function(v) C.esp_hp = v end)
-    M:addColor(esp_l, "hp color", C.esp_hp_col, function(c) C.esp_hp_col = c end)
-    M:addToggle(esp_l, "skeleton", false, function(v) C.esp_skel = v end)
-    M:addColor(esp_l, "skel color", C.esp_skel_col, function(c) C.esp_skel_col = c end)
-    M:addToggle(esp_l, "chams", false, function(v) C.esp_chams = v; if not v then for p, h in pairs(ESP_CHAMS) do h:Destroy() end; table.clear(ESP_CHAMS) end end)
+    local self_r = M:section(ch_t, {name = "self esp", side = "right"})
+    M:toggle_(self_r, "enable", false, function(v)
+        C.self_esp = v
+        if not v and se_hl then se_hl:Destroy(); se_hl = nil end
+    end)
+    M:color_(self_r, "color", C.self_esp_col, function(c) C.self_esp_col = c end)
 
-    local esp_r = M:addSection(esp_t, "role colors", "right")
-    M:addColor(esp_r, "murderer", C.esp_col_mur, function(c) C.esp_col_mur = c end)
-    M:addColor(esp_r, "sheriff", C.esp_col_shf, function(c) C.esp_col_shf = c end)
-    M:addColor(esp_r, "innocent", C.esp_col_inn, function(c) C.esp_col_inn = c end)
-    local gun_r = M:addSection(esp_t, "gun esp", "right")
-    M:addToggle(gun_r, "enable", false, function(v) C.gun_esp = v end)
-    M:addToggle(gun_r, "highlight", false, function(v) C.gun_hl = v end)
-    M:addColor(gun_r, "color", C.gun_hl_col, function(c) C.gun_hl_col = c end)
+    -- ========================================
+    -- ESP TAB
+    -- ========================================
+    local esp_t = M:tab({name = "esp", icon = TAB_ICONS.esp})
+    local box_l = M:section(esp_t, {name = "player", side = "left"})
+    M:toggle_(box_l, "enable esp", false, function(v) C.esp = v end)
+    M:toggle_(box_l, "box", false, function(v) C.esp_box = v end)
+    M:color_(box_l, "box color", C.esp_box_col, function(c) C.esp_box_col = c end)
+    M:toggle_(box_l, "name", false, function(v) C.esp_name = v end)
+    M:color_(box_l, "name color", C.esp_name_col, function(c) C.esp_name_col = c end)
+    M:toggle_(box_l, "distance", false, function(v) C.esp_dist = v end)
+    M:color_(box_l, "dist color", C.esp_dist_col, function(c) C.esp_dist_col = c end)
 
-    -- PLAYER
-    local pl_t = M:addTab("player", "player")
-    local mv_l = M:addSection(pl_t, "movement", "left")
-    M:addToggle(mv_l, "fly", false, function(v) C.fly = v; if v then start_fly() else stop_fly() end end)
-    M:addSlider(mv_l, "fly speed", 60, 10, 300, 0, function(v) C.fly_spd = v end, "st")
-    M:addToggle(mv_l, "noclip", false, function(v) C.noclip = v end)
-    M:addToggle(mv_l, "infinite jump", false, function(v) C.inf_jump = v end)
-    M:addToggle(mv_l, "bhop", false, function(v) C.bhop = v end)
-    M:addToggle(mv_l, "walkspeed", false, function(v) C.ws_on = v end)
-    M:addSlider(mv_l, "ws value", 40, 16, 300, 0, function(v) C.ws_val = v end, "")
-    M:addToggle(mv_l, "jumppower", false, function(v) C.jp_on = v end)
-    M:addSlider(mv_l, "jp value", 80, 0, 500, 0, function(v) C.jp_val = v end, "")
+    local hl_c = M:section(esp_t, {name = "details", side = "center"})
+    M:toggle_(hl_c, "health", false, function(v) C.esp_hp = v end)
+    M:color_(hl_c, "hp color", C.esp_hp_col, function(c) C.esp_hp_col = c end)
+    M:toggle_(hl_c, "skeleton", false, function(v) C.esp_skel = v end)
+    M:color_(hl_c, "skel color", C.esp_skel_col, function(c) C.esp_skel_col = c end)
+    M:toggle_(hl_c, "chams", false, function(v)
+        C.esp_chams = v
+        if not v then for _, h in pairs(ESP_CHAMS) do h:Destroy() end; table.clear(ESP_CHAMS) end
+    end)
 
-    local pl_r = M:addSection(pl_t, "exploits", "right")
-    M:addToggle(pl_r, "fake pos", false, function(v) C.fake = v; if v then start_fake() else stop_fake() end end)
-    M:addSlider(pl_r, "x range", 9, 1, 9, 0, function(v) C.fake_x = v end, "")
-    M:addSlider(pl_r, "y range", 9, 1, 9, 0, function(v) C.fake_y = v end, "")
-    M:addSlider(pl_r, "z range", 9, 1, 9, 0, function(v) C.fake_z = v end, "")
-    M:addToggle(pl_r, "vel spoof", false, function(v) C.vs_on = v; if v then start_vs() end end)
-    M:addDropdown(pl_r, "vs mode", {"low","high","y high","zero"}, "low", function(v) C.vs_type = v end)
-    M:addToggle(pl_r, "fake korblox", false, function(v) C.korblox = v; if v then korblox_apply() else korblox_restore() end end)
-    M:addToggle(pl_r, "fake headless", false, function(v) C.headless = v; if v then headless_apply() else headless_restore() end end)
+    local role_r = M:section(esp_t, {name = "roles", side = "right"})
+    M:color_(role_r, "murderer", C.esp_col_mur, function(c) C.esp_col_mur = c end)
+    M:color_(role_r, "sheriff", C.esp_col_shf, function(c) C.esp_col_shf = c end)
+    M:color_(role_r, "innocent", C.esp_col_inn, function(c) C.esp_col_inn = c end)
 
-    -- WORLD
-    local wd_t = M:addTab("world", "world")
-    local wd_l = M:addSection(wd_t, "lighting", "left")
-    M:addToggle(wd_l, "fullbright", false, function(v)
+    -- ========================================
+    -- PLAYER TAB
+    -- ========================================
+    local pl_t = M:tab({name = "player", icon = TAB_ICONS.player})
+    local mv_l = M:section(pl_t, {name = "movement", side = "left"})
+    M:toggle_(mv_l, "fly", false, function(v) C.fly = v; if v then start_fly() else stop_fly() end end)
+    M:slider_(mv_l, "speed", 60, 10, 300, 0, function(v) C.fly_spd = v end, "st")
+    M:toggle_(mv_l, "noclip", false, function(v) C.noclip = v end)
+    M:toggle_(mv_l, "infinite jump", false, function(v) C.inf_jump = v end)
+    M:toggle_(mv_l, "bhop", false, function(v) C.bhop = v end)
+    M:toggle_(mv_l, "walkspeed", false, function(v) C.ws_on = v end)
+    M:slider_(mv_l, "ws value", 40, 16, 300, 0, function(v) C.ws_val = v end, "")
+    M:toggle_(mv_l, "jumppower", false, function(v) C.jp_on = v end)
+    M:slider_(mv_l, "jp value", 80, 0, 500, 0, function(v) C.jp_val = v end, "")
+
+    local fake_r = M:section(pl_t, {name = "exploits", side = "right"})
+    M:toggle_(fake_r, "fake pos", false, function(v) C.fake = v; if v then start_fake() else stop_fake() end end)
+    M:slider_(fake_r, "x range", 9, 1, 9, 0, function(v) C.fake_x = v end, "")
+    M:slider_(fake_r, "y range", 9, 1, 9, 0, function(v) C.fake_y = v end, "")
+    M:slider_(fake_r, "z range", 9, 1, 9, 0, function(v) C.fake_z = v end, "")
+    M:toggle_(fake_r, "vel spoof", false, function(v) C.vs_on = v; if v then start_vs() end end)
+    M:dropdown_(fake_r, "vs mode", {"low", "high", "y high", "zero"}, "low", function(v) C.vs_type = v end)
+    M:toggle_(fake_r, "fake korblox", false, function(v) C.korblox = v; if v then korblox_apply() else korblox_restore() end end)
+    M:toggle_(fake_r, "fake headless", false, function(v) C.headless = v; if v then headless_apply() else headless_restore() end end)
+
+    -- ========================================
+    -- TARGET TAB
+    -- ========================================
+    local tg_t = M:tab({name = "target", icon = TAB_ICONS.target})
+    local tg_l = M:section(tg_t, {name = "actions", side = "left"})
+    M:toggle_(tg_l, "spectate", false, function(v) C.spec = v end)
+    M:toggle_(tg_l, "headsit", false, function(v)
+        C.headsit = v
+        if not v then local h = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid"); if h then h.Sit = false end end
+    end)
+    M:toggle_(tg_l, "bang", false, function(v) C.bang = v; if not v then stop_bang() end end)
+    M:slider_(tg_l, "bang speed", 3, 1, 10, 1, function(v)
+        C.bang_speed = v
+        if bang_track then pcall(function() bang_track:AdjustSpeed(v) end) end
+    end, "")
+    M:toggle_(tg_l, "loop tp", false, function(v) C.looptp = v end)
+
+    local tpo_r = M:section(tg_t, {name = "tp offset", side = "right"})
+    M:slider_(tpo_r, "x", 0, 0, 10, 1, function(v) C.tp_x = v end, "")
+    M:slider_(tpo_r, "y", 0, 0, 10, 1, function(v) C.tp_y = v end, "")
+    M:slider_(tpo_r, "z", 0, 0, 10, 1, function(v) C.tp_z = v end, "")
+
+    -- ========================================
+    -- WORLD TAB
+    -- ========================================
+    local wd_t = M:tab({name = "world", icon = TAB_ICONS.world})
+    local light_l = M:section(wd_t, {name = "lighting", side = "left"})
+    M:toggle_(light_l, "fullbright", false, function(v)
         C.fullbright = v
         if v then
             Lighting.Brightness = 2; Lighting.ClockTime = 14; Lighting.GlobalShadows = false
@@ -2226,75 +2189,52 @@ if M.ok then
             Lighting.FogEnd = world_orig.FogEnd
         end
     end)
-    M:addToggle(wd_l, "ambient", false, function(v)
-        C.ambient = v
-        if v then Lighting.Ambient = C.ambient_col; Lighting.OutdoorAmbient = C.ambient_col
-        else Lighting.Ambient = world_orig.Ambient; Lighting.OutdoorAmbient = world_orig.OutdoorAmbient end
-    end)
-    M:addColor(wd_l, "ambient col", C.ambient_col, function(c) C.ambient_col = c; if C.ambient then Lighting.Ambient = c; Lighting.OutdoorAmbient = c end end)
-    M:addToggle(wd_l, "time", false, function(v) C.time_on = v; Lighting.ClockTime = v and C.time_val or world_orig.ClockTime end)
-    M:addSlider(wd_l, "hour", 12, 0, 24, 1, function(v) C.time_val = v; if C.time_on then Lighting.ClockTime = v end end, "h")
-    M:addToggle(wd_l, "exposure", false, function(v) C.exposure = v; Lighting.ExposureCompensation = v and C.exposure_val or world_orig.Exposure end)
-    M:addSlider(wd_l, "exp val", 0, -5, 5, 2, function(v) C.exposure_val = v; if C.exposure then Lighting.ExposureCompensation = v end end, "")
+    M:toggle_(light_l, "time changer", false, function(v) C.time_on = v; Lighting.ClockTime = v and C.time_val or world_orig.ClockTime end)
+    M:slider_(light_l, "time", 12, 0, 24, 1, function(v) C.time_val = v; if C.time_on then Lighting.ClockTime = v end end, "h")
+    M:toggle_(light_l, "exposure", false, function(v) Lighting.ExposureCompensation = v and 0 or world_orig.Exposure end)
 
-    local wd_r = M:addSection(wd_t, "atmosphere", "right")
-    M:addToggle(wd_r, "custom fog", false, function(v)
+    local atm_r = M:section(wd_t, {name = "atmosphere", side = "right"})
+    M:toggle_(atm_r, "custom fog", false, function(v)
         C.fog = v
         if v then Lighting.FogColor = C.fog_col; Lighting.FogStart = C.fog_start; Lighting.FogEnd = C.fog_end
         else Lighting.FogColor = world_orig.FogColor; Lighting.FogStart = world_orig.FogStart; Lighting.FogEnd = world_orig.FogEnd end
     end)
-    M:addColor(wd_r, "fog color", C.fog_col, function(c) C.fog_col = c; if C.fog then Lighting.FogColor = c end end)
-    M:addSlider(wd_r, "fog start", 0, 0, 1000, 0, function(v) C.fog_start = v; if C.fog then Lighting.FogStart = v end end, "")
-    M:addSlider(wd_r, "fog end", 1000, 0, 5000, 0, function(v) C.fog_end = v; if C.fog then Lighting.FogEnd = v end end, "")
-    M:addToggle(wd_r, "skybox", false, function(v) C.skybox_on = v; if v then apply_skybox(C.skybox) else clear_skybox() end end)
-    M:addDropdown(wd_r, "preset", {"Jungle","Blossom","Red night"}, "Jungle", function(v) C.skybox = v; if C.skybox_on then apply_skybox(v) end end)
+    M:color_(atm_r, "fog color", C.fog_col, function(c) C.fog_col = c; if C.fog then Lighting.FogColor = c end end)
+    M:slider_(atm_r, "fog start", 0, 0, 1000, 0, function(v) C.fog_start = v; if C.fog then Lighting.FogStart = v end end, "")
+    M:slider_(atm_r, "fog end", 1000, 0, 5000, 0, function(v) C.fog_end = v; if C.fog then Lighting.FogEnd = v end end, "")
+    M:toggle_(atm_r, "skybox", false, function(v) C.skybox_on = v; if v then apply_skybox(C.skybox) else clear_skybox() end end)
+    M:dropdown_(atm_r, "preset", {"Jungle", "Blossom", "Red night"}, "Jungle", function(v) C.skybox = v; if C.skybox_on then apply_skybox(v) end end)
 
-    -- TARGET
-    local tg_t = M:addTab("target", "target")
-    local tg_l = M:addSection(tg_t, "actions", "left")
-    M:addToggle(tg_l, "spectate", false, function(v) C.spec = v end)
-    M:addToggle(tg_l, "headsit", false, function(v)
-        C.headsit = v
-        if not v then local h = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid"); if h then h.Sit = false end end
-    end)
-    M:addToggle(tg_l, "bang", false, function(v) C.bang = v; if not v then stop_bang() end end)
-    M:addSlider(tg_l, "bang speed", 3, 1, 10, 1, function(v) C.bang_speed = v; if bang_track then pcall(function() bang_track:AdjustSpeed(v) end) end end, "")
-    M:addToggle(tg_l, "loop tp", false, function(v) C.looptp = v end)
-    local tg_r = M:addSection(tg_t, "tp offset", "right")
-    M:addSlider(tg_r, "x", 0, 0, 10, 1, function(v) C.tp_x = v end, "")
-    M:addSlider(tg_r, "y", 0, 0, 10, 1, function(v) C.tp_y = v end, "")
-    M:addSlider(tg_r, "z", 0, 0, 10, 1, function(v) C.tp_z = v end, "")
-    M:addToggle(tg_r, "velocity check", false, function(v) C.fling_vel = v end)
+    -- ========================================
+    -- MISC TAB
+    -- ========================================
+    local ms_t = M:tab({name = "misc", icon = TAB_ICONS.misc})
+    local cross_l = M:section(ms_t, {name = "crosshair", side = "left"})
+    M:toggle_(cross_l, "crosshair", false, function(v) C.cross = v end)
+    M:slider_(cross_l, "gap", 4, 0, 20, 0, function(v) C.cross_gap = v end, "")
+    M:slider_(cross_l, "length", 8, 2, 30, 0, function(v) C.cross_len = v end, "")
+    M:slider_(cross_l, "thickness", 2, 1, 5, 0, function(v) C.cross_th = v end, "")
+    M:color_(cross_l, "color", C.cross_col, function(c) C.cross_col = c end)
 
-    -- MISC
-    local ms_t = M:addTab("misc", "misc")
-    local ms_l = M:addSection(ms_t, "crosshair", "left")
-    M:addToggle(ms_l, "crosshair", false, function(v) C.cross = v end)
-    M:addSlider(ms_l, "gap", 4, 0, 20, 0, function(v) C.cross_gap = v end, "")
-    M:addSlider(ms_l, "length", 8, 2, 30, 0, function(v) C.cross_len = v end, "")
-    M:addSlider(ms_l, "thickness", 2, 1, 5, 0, function(v) C.cross_th = v end, "")
-    M:addColor(ms_l, "color", C.cross_col, function(c) C.cross_col = c end)
-    local ms_r = M:addSection(ms_t, "extras", "right")
-    M:addToggle(ms_r, "auto farm", false, function(v) farm_on = v end)
-    M:addToggle(ms_r, "alerts", false, function(v) C.alert = v end)
-    M:addLabel(ms_r, "SHITARO v5 standalone\nno github, no libs\ntoggle: RightShift\nunload: getgenv().SHITARO_UNLOAD()")
+    local info_r = M:section(ms_t, {name = "info", side = "right"})
+    M:label_(info_r, "SHITARO v6 standalone.\nAim: silent hook + prediction + backtrack.\nTracer: bullet trail.\nSelf chams: 5 modes.\nMenu: Insert or floating S on mobile.\nUnload: getgenv().SHITARO_UNLOAD()")
 
-    notify("SHITARO v5 loaded. RightShift to toggle.")
+    notify("SHITARO v6 loaded. Insert to toggle.")
 else
     warn("[SHITARO] menu failed:", M.err)
 end
 
 -- ============================================================
--- unload
+-- UNLOAD
 -- ============================================================
 getgenv().SHITARO_UNLOAD = function()
-    C.aim=false; C.auto=false; C.force=false; C.aura=false; C.kill_all=false
-    C.kill_targets=false; C.fling_targets=false
+    C.aim=false; C.auto=false; C.force=false
+    C.aura=false; C.kill_all=false; C.kill_targets=false; C.fling_targets=false
     C.fly=false; C.noclip=false; C.bhop=false; C.inf_jump=false
     C.fake=false; C.vs_on=false; C.esp=false; C.esp_chams=false
     C.self_chams=false; C.self_esp=false; C.tracer=false; C.cross=false
-    C.spec=false; C.headsit=false; C.bang=false; C.looptp=false; C.alert=false
-    farm_on = false
+    C.spec=false; C.headsit=false; C.bang=false; C.looptp=false
+    C.farm=false
     pcall(stop_fly); pcall(stop_fake); pcall(stop_bang)
     pcall(self_chams_restore); pcall(korblox_restore); pcall(headless_restore); pcall(clear_skybox)
     if se_hl then se_hl:Destroy() end
