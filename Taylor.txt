@@ -22,16 +22,17 @@ end
 local Cam        = workspace.CurrentCamera
 
 -- ============================================================
--- ORION UI
+-- RAYFIELD UI
 -- ============================================================
-local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local function MakeNotif(name, content, dur)
     pcall(function()
-        OrionLib:MakeNotification({
-            Name = name or "StarWare",
-            Content = content or "",
-            Time = dur or 3,
+        Rayfield:Notify({
+            Title    = name or "StarWare",
+            Content  = content or "",
+            Duration = dur or 3,
+            Image    = 4483362458,
         })
     end)
 end
@@ -143,7 +144,7 @@ local function HEAD() local c=LP.Character; return c and c:FindFirstChild("Head"
 local function LT(c) return Color3.new(math.min(1,c.R*1.4),math.min(1,c.G*1.4),math.min(1,c.B*1.4)) end
 
 -- ============================================================
--- targeting (с локом цели)
+-- targeting
 -- ============================================================
 local rp=RaycastParams.new()
 rp.FilterType=Enum.RaycastFilterType.Exclude
@@ -152,7 +153,6 @@ local EC={ rtt=0, jitter=0, seen=false }
 local function refresh_target()
     refreshRoleCache()
 
-    -- текущая цель ещё валидна?
     local keepCurrent = false
     local curDist = math.huge
     if target_p and target_p.Character then
@@ -180,9 +180,8 @@ local function refresh_target()
         end
     end
 
-    -- hysteresis: держим текущую цель если она не сильно дальше нового кандидата
     if keepCurrent and best ~= target_p and curDist < bd * 1.4 then
-        return  -- остаёмся на текущей
+        return
     end
 
     if best~=target_p then target_p=best; target_char,target_part,target_hum=nil,nil,nil end
@@ -219,8 +218,6 @@ local function sample_ping()
     rtt=math.clamp(rtt,0,1)
     if EC.seen then EC.rtt=EC.rtt*0.85+rtt*0.15 else EC.rtt=rtt; EC.seen=true end
 end
-
-local function track_step(now) end
 
 -- ============================================================
 -- aim
@@ -349,7 +346,6 @@ get_ws_fn=function()
     return WSH.m
 end
 
--- улучшенный resolve с приоритетом видимых хитбоксов
 local function resolve()
     if not SA.enabled then return nil end
     if not target_p or not target_p.Character then
@@ -395,7 +391,6 @@ local function resolve()
     local muzzle = att and att.WorldPosition or (myRoot and myRoot.Position)
     if not muzzle then return nil end
 
-    -- wallbang через attachment
     local wbSpot
     if SA.wb and SA_rayBlocked(muzzle, root.Position, { c, myChar }) and not SA_anyVisible(c, muzzle) then
         wbSpot = SA_findWbSpot(root, muzzle)
@@ -419,7 +414,6 @@ local function resolve()
     local fromPos = wbSpot or (quietCf and quietCf.Position) or muzzle
     rp.FilterDescendantsInstances = { myChar, workspace.CurrentCamera }
 
-    -- собираем все видимые кандидаты, сортируем по дистанции, берём ближайший
     local candidates = {}
     for _, name in ipairs(order) do
         local part = c:FindFirstChild(name)
@@ -437,7 +431,6 @@ local function resolve()
         return candidates[1].pos
     end
 
-    -- fallback: цель за стеной, но wbSpot был найден
     if wbSpot then
         for _, name in ipairs(order) do
             local part = c:FindFirstChild(name)
@@ -529,7 +522,6 @@ getgenv().KNIFE_AIM_RESOLVE=function()
     return CFrame.new(part.Position+vel)
 end
 
--- kill aura
 ka_tick=function()
     if not KA.on then return end
     local c=LP.Character; if not c then return end
@@ -1568,76 +1560,64 @@ local function killAll()
 end
 
 -- ============================================================
--- ORION MENU
+-- RAYFIELD MENU
 -- ============================================================
-local Window = OrionLib:MakeWindow({
+local Window = Rayfield:CreateWindow({
     Name = "StarWare v3",
-    HidePremium = false,
-    SaveConfig = false,
-    ConfigFolder = "StarWare",
-    IntroEnabled = false,
-    IntroText = "StarWare",
-    Icon = "rbxassetid://4483345998",
+    LoadingTitle = "StarWare",
+    LoadingSubtitle = "loading",
+    ConfigurationSaving = { Enabled = false, FolderName = "StarWare", FileName = "Config" },
+    KeySystem = false,
+    Icon = 4483345998,
 })
 
 -- COMBAT
-local TabCombat = Window:MakeTab({ Name = "Combat", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabCombat:AddSection({ Name = "Silent Aim" })
-TabCombat:AddToggle({
-    Name = "Silent Aim",
-    Default = true,
+local TabCombat = Window:CreateTab("Combat", 4483345998)
+TabCombat:CreateSection("Silent Aim")
+TabCombat:CreateToggle({
+    Name = "Silent Aim", CurrentValue = true, Flag = "sa_enabled",
     Callback = function(v) SA.enabled = v; if v then pcall(install_hooks) end
-        MakeNotif("Silent Aim", v and "enabled" or "disabled", 2)
-    end
+        MakeNotif("Silent Aim", v and "enabled" or "disabled", 2) end
 })
-TabCombat:AddToggle({
-    Name = "WallBang",
-    Default = true,
+TabCombat:CreateToggle({
+    Name = "WallBang", CurrentValue = true, Flag = "sa_wb",
     Callback = function(v) SA.wb = v; MakeNotif("WallBang", v and "enabled" or "disabled", 2) end
 })
-TabCombat:AddToggle({
-    Name = "Quiet Peek",
-    Default = true,
+TabCombat:CreateToggle({
+    Name = "Quiet Peek", CurrentValue = true, Flag = "sa_quiet",
     Callback = function(v) SA.quiet = v; MakeNotif("Quiet Peek", v and "enabled" or "disabled", 2) end
 })
-TabCombat:AddToggle({
-    Name = "Anti Spam-Jumper",
-    Default = true,
+TabCombat:CreateToggle({
+    Name = "Anti Spam-Jumper", CurrentValue = true, Flag = "sa_antijump",
     Callback = function(v) SA.antiJump = v; MakeNotif("Anti Jump", v and "enabled" or "disabled", 2) end
 })
-TabCombat:AddButton({
+TabCombat:CreateButton({
     Name = "Switch Aim Part",
     Callback = function()
         SA.part = SA.part == "Torso" and "Head" or "Torso"
         MakeNotif("Aim Part", SA.part, 2)
     end
 })
-TabCombat:AddToggle({
-    Name = "Knife Silent",
-    Default = false,
+TabCombat:CreateToggle({
+    Name = "Knife Silent", CurrentValue = false, Flag = "ks_enabled",
     Callback = function(v) KS.enabled = v; MakeNotif("Knife Silent", v and "enabled" or "disabled", 2) end
 })
 
-TabCombat:AddSection({ Name = "Kill Aura" })
-TabCombat:AddToggle({
-    Name = "Kill Aura",
-    Default = false,
+TabCombat:CreateSection("Kill Aura")
+TabCombat:CreateToggle({
+    Name = "Kill Aura", CurrentValue = false, Flag = "ka_on",
     Callback = function(v) KA.on = v; MakeNotif("Kill Aura", v and "enabled" or "disabled", 2) end
 })
-TabCombat:AddSlider({
-    Name = "KA Distance", Min = 5, Max = 150, Default = 30, Increment = 1,
-    ValueName = "studs", Color = Color3.fromRGB(86,76,251),
+TabCombat:CreateSlider({
+    Name = "KA Distance", Range = {5, 150}, Increment = 1, Suffix = "studs",
+    CurrentValue = 30, Flag = "ka_dist",
     Callback = function(v) KA.dist = v end
 })
-TabCombat:AddButton({
-    Name = "Kill All",
-    Callback = function() task.spawn(killAll) end
-})
+TabCombat:CreateButton({ Name = "Kill All", Callback = function() task.spawn(killAll) end })
 
-TabCombat:AddSection({ Name = "Gun" })
-TabCombat:AddToggle({
-    Name = "Auto Gun",
-    Default = false,
+TabCombat:CreateSection("Gun")
+TabCombat:CreateToggle({
+    Name = "Auto Gun", CurrentValue = false, Flag = "autograb",
     Callback = function(v)
         autograb_on = v
         if v then
@@ -1651,129 +1631,128 @@ TabCombat:AddToggle({
 })
 
 -- MOVE
-local TabMove = Window:MakeTab({ Name = "Move", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabMove:AddSection({ Name = "Walk" })
-TabMove:AddToggle({ Name = "Walkspeed", Default = false, Callback = function(v) MOVE.speedOn=v; applySpeed() end })
-TabMove:AddSlider({ Name = "Speed", Min = 1, Max = 500, Default = 50, Increment = 1,
-    ValueName = "studs/s", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) MOVE.speed=v; applySpeed() end })
-TabMove:AddToggle({ Name = "JumpPower", Default = false, Callback = function(v) MOVE.jumpOn=v; applyJump() end })
-TabMove:AddSlider({ Name = "Jump Power", Min = 1, Max = 500, Default = 50, Increment = 1,
-    ValueName = "power", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) MOVE.jump=v; applyJump() end })
-TabMove:AddToggle({ Name = "Infinite Jump", Default = false, Callback = function(v)
-    MOVE.infJump=v
-    if v then startInfJump() else stopInfJump() end
-end })
-TabMove:AddToggle({ Name = "HipHeight", Default = false, Callback = function(v) MOVE.hipOn=v; applyHip() end })
-TabMove:AddSlider({ Name = "Hip Height", Min = -5, Max = 50, Default = 2, Increment = 1,
-    ValueName = "studs", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) MOVE.hip=v; applyHip() end })
+local TabMove = Window:CreateTab("Move", 4483345998)
+TabMove:CreateSection("Walk")
+TabMove:CreateToggle({ Name = "Walkspeed", CurrentValue = false, Flag = "mv_speedOn",
+    Callback = function(v) MOVE.speedOn = v; applySpeed() end })
+TabMove:CreateSlider({ Name = "Speed", Range = {1, 500}, Increment = 1, Suffix = "studs/s",
+    CurrentValue = 50, Flag = "mv_speed",
+    Callback = function(v) MOVE.speed = v; applySpeed() end })
+TabMove:CreateToggle({ Name = "JumpPower", CurrentValue = false, Flag = "mv_jumpOn",
+    Callback = function(v) MOVE.jumpOn = v; applyJump() end })
+TabMove:CreateSlider({ Name = "Jump Power", Range = {1, 500}, Increment = 1, Suffix = "power",
+    CurrentValue = 50, Flag = "mv_jump",
+    Callback = function(v) MOVE.jump = v; applyJump() end })
+TabMove:CreateToggle({ Name = "Infinite Jump", CurrentValue = false, Flag = "mv_infJump",
+    Callback = function(v) MOVE.infJump = v; if v then startInfJump() else stopInfJump() end end })
+TabMove:CreateToggle({ Name = "HipHeight", CurrentValue = false, Flag = "mv_hipOn",
+    Callback = function(v) MOVE.hipOn = v; applyHip() end })
+TabMove:CreateSlider({ Name = "Hip Height", Range = {-5, 50}, Increment = 1, Suffix = "studs",
+    CurrentValue = 2, Flag = "mv_hip",
+    Callback = function(v) MOVE.hip = v; applyHip() end })
 
-TabMove:AddSection({ Name = "Fly" })
-TabMove:AddToggle({ Name = "Noclip", Default = false, Callback = function(v)
-    MOVE.noclip=v
-    if v then startNoclip() else stopNoclip() end
-end })
-TabMove:AddToggle({ Name = "Fly", Default = false, Callback = function(v)
-    MOVE.fly=v
-    if v then startFly() else stopFly() end
-end })
-TabMove:AddSlider({ Name = "Fly Speed", Min = 5, Max = 500, Default = 60, Increment = 5,
-    ValueName = "studs/s", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) MOVE.flySpeed=v end })
-TabMove:AddToggle({ Name = "Spin", Default = false, Callback = function(v)
-    MOVE.spin=v
-    if v then startSpin() else stopSpin() end
-end })
-TabMove:AddSlider({ Name = "Spin Speed", Min = 30, Max = 3000, Default = 720, Increment = 30,
-    ValueName = "deg/s", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) MOVE.spinSpeed=v end })
+TabMove:CreateSection("Fly")
+TabMove:CreateToggle({ Name = "Noclip", CurrentValue = false, Flag = "mv_noclip",
+    Callback = function(v) MOVE.noclip = v; if v then startNoclip() else stopNoclip() end end })
+TabMove:CreateToggle({ Name = "Fly", CurrentValue = false, Flag = "mv_fly",
+    Callback = function(v) MOVE.fly = v; if v then startFly() else stopFly() end end })
+TabMove:CreateSlider({ Name = "Fly Speed", Range = {5, 500}, Increment = 5, Suffix = "studs/s",
+    CurrentValue = 60, Flag = "mv_flySpeed",
+    Callback = function(v) MOVE.flySpeed = v end })
+TabMove:CreateToggle({ Name = "Spin", CurrentValue = false, Flag = "mv_spin",
+    Callback = function(v) MOVE.spin = v; if v then startSpin() else stopSpin() end end })
+TabMove:CreateSlider({ Name = "Spin Speed", Range = {30, 3000}, Increment = 30, Suffix = "deg/s",
+    CurrentValue = 720, Flag = "mv_spinSpeed",
+    Callback = function(v) MOVE.spinSpeed = v end })
 
-TabMove:AddSection({ Name = "World" })
-TabMove:AddToggle({ Name = "Custom Gravity", Default = false, Callback = function(v) MOVE.gravOn=v; applyGrav() end })
-TabMove:AddSlider({ Name = "Gravity", Min = 0, Max = 1000, Default = 196, Increment = 1,
-    ValueName = "g", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) MOVE.grav=v; applyGrav() end })
-TabMove:AddButton({ Name = "Reset Move", Callback = function() moveReset() end })
-TabMove:AddButton({ Name = "TP to Map", Callback = function()
-    local best,bd=nil,math.huge
-    local hrp=HRP(); if not hrp then return end
-    for _,o in ipairs(workspace:GetDescendants()) do
-        if o:IsA("SpawnLocation") and o.Parent and not string.find(tostring(o:GetFullName()),"Lobby") then
-            local d=(o.Position-hrp.Position).Magnitude
-            if d<bd then bd=d; best=o end
+TabMove:CreateSection("World")
+TabMove:CreateToggle({ Name = "Custom Gravity", CurrentValue = false, Flag = "mv_gravOn",
+    Callback = function(v) MOVE.gravOn = v; applyGrav() end })
+TabMove:CreateSlider({ Name = "Gravity", Range = {0, 1000}, Increment = 1, Suffix = "g",
+    CurrentValue = 196, Flag = "mv_grav",
+    Callback = function(v) MOVE.grav = v; applyGrav() end })
+TabMove:CreateButton({ Name = "Reset Move", Callback = function() moveReset() end })
+TabMove:CreateButton({ Name = "TP to Map", Callback = function()
+    local best, bd = nil, math.huge
+    local hrp = HRP(); if not hrp then return end
+    for _, o in ipairs(workspace:GetDescendants()) do
+        if o:IsA("SpawnLocation") and o.Parent and not string.find(tostring(o:GetFullName()), "Lobby") then
+            local d = (o.Position - hrp.Position).Magnitude
+            if d < bd then bd = d; best = o end
         end
     end
-    if best then hrp.CFrame=best.CFrame+Vector3.new(0,5,0) end
+    if best then hrp.CFrame = best.CFrame + Vector3.new(0, 5, 0) end
 end })
-TabMove:AddButton({ Name = "TP to Lobby", Callback = function()
-    local hrp=HRP(); if not hrp then return end
-    for _,o in ipairs(workspace:GetDescendants()) do
-        if o:IsA("SpawnLocation") and string.find(tostring(o:GetFullName()),"Lobby") then
-            hrp.CFrame=o.CFrame+Vector3.new(0,5,0); break
+TabMove:CreateButton({ Name = "TP to Lobby", Callback = function()
+    local hrp = HRP(); if not hrp then return end
+    for _, o in ipairs(workspace:GetDescendants()) do
+        if o:IsA("SpawnLocation") and string.find(tostring(o:GetFullName()), "Lobby") then
+            hrp.CFrame = o.CFrame + Vector3.new(0, 5, 0); break
         end
     end
 end })
-TabMove:AddToggle({ Name = "Anti Fall", Default = false, Callback = function(v) MOVE.antiFall=v end })
-TabMove:AddToggle({ Name = "Anti Fling", Default = false, Callback = function(v) fl.antifling=v end })
-TabMove:AddToggle({ Name = "Ctrl+Click TP", Default = false, Callback = function(v) MOVE.ctrltp=v end })
+TabMove:CreateToggle({ Name = "Anti Fall", CurrentValue = false, Flag = "mv_antiFall",
+    Callback = function(v) MOVE.antiFall = v end })
+TabMove:CreateToggle({ Name = "Anti Fling", CurrentValue = false, Flag = "fl_antifling",
+    Callback = function(v) fl.antifling = v end })
+TabMove:CreateToggle({ Name = "Ctrl+Click TP", CurrentValue = false, Flag = "mv_ctrltp",
+    Callback = function(v) MOVE.ctrltp = v end })
 
 -- TROLL
-local TabTroll = Window:MakeTab({ Name = "Troll", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabTroll:AddSection({ Name = "Fling" })
-TabTroll:AddButton({ Name = "Fling Nearest", Callback = function() flingNearest() end })
-TabTroll:AddButton({ Name = "Fling All", Callback = function() flingAll() end })
-TabTroll:AddButton({ Name = "Fling Murderer", Callback = function()
-    for _,p in ipairs(Players:GetPlayers()) do
-        if p~=LP and alive(p) and cachedRole(p)=="m" then flingTarget(p); return end
+local TabTroll = Window:CreateTab("Troll", 4483345998)
+TabTroll:CreateSection("Fling")
+TabTroll:CreateButton({ Name = "Fling Nearest", Callback = function() flingNearest() end })
+TabTroll:CreateButton({ Name = "Fling All",     Callback = function() flingAll() end })
+TabTroll:CreateButton({ Name = "Fling Murderer", Callback = function()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP and alive(p) and cachedRole(p) == "m" then flingTarget(p); return end
     end
     MakeNotif("Fling", "No murderer", 2)
 end })
-TabTroll:AddButton({ Name = "Fling Sheriff", Callback = function()
-    for _,p in ipairs(Players:GetPlayers()) do
-        if p~=LP and alive(p) and cachedRole(p)=="s" then flingTarget(p); return end
+TabTroll:CreateButton({ Name = "Fling Sheriff", Callback = function()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP and alive(p) and cachedRole(p) == "s" then flingTarget(p); return end
     end
     MakeNotif("Fling", "No sheriff", 2)
 end })
-TabTroll:AddButton({ Name = "Stop Troll", Callback = function() stopTroll() end })
+TabTroll:CreateButton({ Name = "Stop Troll", Callback = function() stopTroll() end })
 
-TabTroll:AddSection({ Name = "Teleport" })
-TabTroll:AddButton({ Name = "TP to Murder", Callback = function()
-    for _,p in ipairs(Players:GetPlayers()) do
-        if p~=LP and alive(p) and cachedRole(p)=="m" then
-            local hrp=HRP(); local th=p.Character and p.Character:FindFirstChild("HumanoidRootPart")
-            if hrp and th then hrp.CFrame=th.CFrame+Vector3.new(0,0,3) end
+TabTroll:CreateSection("Teleport")
+TabTroll:CreateButton({ Name = "TP to Murder", Callback = function()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP and alive(p) and cachedRole(p) == "m" then
+            local hrp = HRP(); local th = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+            if hrp and th then hrp.CFrame = th.CFrame + Vector3.new(0, 0, 3) end
             break
         end
     end
 end })
-TabTroll:AddButton({ Name = "TP to Sheriff", Callback = function()
-    for _,p in ipairs(Players:GetPlayers()) do
-        if p~=LP and alive(p) and cachedRole(p)=="s" then
-            local hrp=HRP(); local th=p.Character and p.Character:FindFirstChild("HumanoidRootPart")
-            if hrp and th then hrp.CFrame=th.CFrame+Vector3.new(0,0,3) end
+TabTroll:CreateButton({ Name = "TP to Sheriff", Callback = function()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP and alive(p) and cachedRole(p) == "s" then
+            local hrp = HRP(); local th = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+            if hrp and th then hrp.CFrame = th.CFrame + Vector3.new(0, 0, 3) end
             break
         end
     end
 end })
-TabTroll:AddButton({ Name = "TP to Random", Callback = function()
+TabTroll:CreateButton({ Name = "TP to Random", Callback = function()
     local all = {}
-    for _,p in ipairs(Players:GetPlayers()) do if p~=LP and alive(p) then all[#all+1]=p end end
-    if #all==0 then return end
-    local tgt = all[math.random(1,#all)]
-    local hrp=HRP(); local th=tgt.Character and tgt.Character:FindFirstChild("HumanoidRootPart")
-    if hrp and th then hrp.CFrame=th.CFrame+Vector3.new(0,0,3) end
+    for _, p in ipairs(Players:GetPlayers()) do if p ~= LP and alive(p) then all[#all+1] = p end end
+    if #all == 0 then return end
+    local tgt = all[math.random(1, #all)]
+    local hrp = HRP(); local th = tgt.Character and tgt.Character:FindFirstChild("HumanoidRootPart")
+    if hrp and th then hrp.CFrame = th.CFrame + Vector3.new(0, 0, 3) end
 end })
-TabTroll:AddButton({ Name = "Dizzy", Callback = function()
-    local h=hum(); if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
-    MOVE.spin=true; pcall(startSpin)
-    task.delay(3, function() MOVE.spin=false; pcall(stopSpin) end)
+TabTroll:CreateButton({ Name = "Dizzy", Callback = function()
+    local h = hum(); if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+    MOVE.spin = true; pcall(startSpin)
+    task.delay(3, function() MOVE.spin = false; pcall(stopSpin) end)
 end })
 
 -- VISUALS
-local TabVisuals = Window:MakeTab({ Name = "Visuals", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabVisuals:AddSection({ Name = "Color Picker" })
+local TabVisuals = Window:CreateTab("Visuals", 4483345998)
+TabVisuals:CreateSection("Color Picker")
 
 local vizLabels = {
     "Trail","Aura","Hat","Glow","Snow","Light","Orb","Foot",
@@ -1785,10 +1764,8 @@ local vizMap = {
     Bounce="bounce", Tracer="tracer", Atmo="atmo",
 }
 
-TabVisuals:AddDropdown({
-    Name = "Select Visual",
-    Default = "Trail",
-    Options = vizLabels,
+TabVisuals:CreateDropdown({
+    Name = "Select Visual", Options = vizLabels, CurrentOption = "Trail", Flag = "viz_sel",
     Callback = function(v) activeViz = vizMap[v] or "trail" end
 })
 
@@ -1808,125 +1785,135 @@ local function rebuildEffect(key)
     if key=="atmo"      and fl.atmo      then pcall(clAtmo);  pcall(mkAtmo)  end
 end
 
-TabVisuals:AddColorPicker({
-    Name = "Pick Color",
-    Default = Color3.fromRGB(0,220,255),
+TabVisuals:CreateColorPicker({
+    Name = "Pick Color", Color = Color3.fromRGB(0, 220, 255), Flag = "viz_color",
     Callback = function(color)
         FC[activeViz] = color
         rebuildEffect(activeViz)
     end
 })
 
-TabVisuals:AddSection({ Name = "Character" })
-TabVisuals:AddToggle({ Name = "Neon Trail",  Default = false, Callback = function(v) fl.trail=v; if v then mkTrail() else clTrail() end end })
-TabVisuals:AddToggle({ Name = "China Hat",   Default = false, Callback = function(v) fl.hat=v;   if v then mkHat()  else clHat()  end end })
-TabVisuals:AddToggle({ Name = "Body Glow",   Default = false, Callback = function(v) fl.glow=v;  if v then mkGlow() else clGlow() end end })
-TabVisuals:AddToggle({ Name = "Rainbow Body",Default = false, Callback = function(v) fl.rainbow=v; if v then mkRB() else clRB() end end })
+TabVisuals:CreateSection("Character")
+TabVisuals:CreateToggle({ Name = "Neon Trail",   CurrentValue = false, Flag = "fl_trail",
+    Callback = function(v) fl.trail = v; if v then mkTrail() else clTrail() end end })
+TabVisuals:CreateToggle({ Name = "China Hat",    CurrentValue = false, Flag = "fl_hat",
+    Callback = function(v) fl.hat = v;   if v then mkHat()   else clHat()   end end })
+TabVisuals:CreateToggle({ Name = "Body Glow",    CurrentValue = false, Flag = "fl_glow",
+    Callback = function(v) fl.glow = v;  if v then mkGlow()  else clGlow()  end end })
+TabVisuals:CreateToggle({ Name = "Rainbow Body", CurrentValue = false, Flag = "fl_rainbow",
+    Callback = function(v) fl.rainbow = v; if v then mkRB() else clRB() end end })
 
-TabVisuals:AddSection({ Name = "Particles" })
-TabVisuals:AddToggle({ Name = "Aura Particles",  Default = false, Callback = function(v) fl.parts=v; if v then mkParts() else clParts() end end })
-TabVisuals:AddToggle({ Name = "Sky Dust",        Default = false, Callback = function(v) fl.skyDust=v; if v then mkSky() else clSky() end end })
-TabVisuals:AddToggle({ Name = "Hearts Sky",      Default = false, Callback = function(v) skyHeart=v; if fl.skyDust then clSky(); mkSky() end end })
-TabVisuals:AddToggle({ Name = "Snow Aura",       Default = false, Callback = function(v) fl.snow=v; if v then mkSnow() else clSnow() end end })
-TabVisuals:AddToggle({ Name = "Bounce Particles",Default = false, Callback = function(v) fl.bounce=v; if v then mkBo() else clBo() end end })
-TabVisuals:AddToggle({ Name = "Hearts Bounce",   Default = false, Callback = function(v) boHeart=v; if fl.bounce then clBo(); mkBo() end end })
-TabVisuals:AddToggle({ Name = "Lightning Aura",  Default = false, Callback = function(v) fl.lightning=v; if v then mkLight() else clLight() end end })
-TabVisuals:AddToggle({ Name = "Orb Aura",        Default = false, Callback = function(v) fl.orbAura=v; if v then mkOrb() else clOrb() end end })
-TabVisuals:AddToggle({ Name = "Ghost Trail",     Default = false, Callback = function(v) fl.ghost=v; if v then mkGhost() else clGhost() end end })
-TabVisuals:AddToggle({ Name = "Footsteps",       Default = false, Callback = function(v) fl.foot=v; if v then mkFoot() else clFoot() end end })
+TabVisuals:CreateSection("Particles")
+TabVisuals:CreateToggle({ Name = "Aura Particles",   CurrentValue = false, Flag = "fl_parts",
+    Callback = function(v) fl.parts = v; if v then mkParts() else clParts() end end })
+TabVisuals:CreateToggle({ Name = "Sky Dust",         CurrentValue = false, Flag = "fl_skyDust",
+    Callback = function(v) fl.skyDust = v; if v then mkSky() else clSky() end end })
+TabVisuals:CreateToggle({ Name = "Hearts Sky",       CurrentValue = false, Flag = "skyHeart",
+    Callback = function(v) skyHeart = v; if fl.skyDust then clSky(); mkSky() end end })
+TabVisuals:CreateToggle({ Name = "Snow Aura",        CurrentValue = false, Flag = "fl_snow",
+    Callback = function(v) fl.snow = v; if v then mkSnow() else clSnow() end end })
+TabVisuals:CreateToggle({ Name = "Bounce Particles", CurrentValue = false, Flag = "fl_bounce",
+    Callback = function(v) fl.bounce = v; if v then mkBo() else clBo() end end })
+TabVisuals:CreateToggle({ Name = "Hearts Bounce",    CurrentValue = false, Flag = "boHeart",
+    Callback = function(v) boHeart = v; if fl.bounce then clBo(); mkBo() end end })
+TabVisuals:CreateToggle({ Name = "Lightning Aura",   CurrentValue = false, Flag = "fl_lightning",
+    Callback = function(v) fl.lightning = v; if v then mkLight() else clLight() end end })
+TabVisuals:CreateToggle({ Name = "Orb Aura",         CurrentValue = false, Flag = "fl_orbAura",
+    Callback = function(v) fl.orbAura = v; if v then mkOrb() else clOrb() end end })
+TabVisuals:CreateToggle({ Name = "Ghost Trail",      CurrentValue = false, Flag = "fl_ghost",
+    Callback = function(v) fl.ghost = v; if v then mkGhost() else clGhost() end end })
+TabVisuals:CreateToggle({ Name = "Footsteps",        CurrentValue = false, Flag = "fl_foot",
+    Callback = function(v) fl.foot = v; if v then mkFoot() else clFoot() end end })
 
-TabVisuals:AddSection({ Name = "Effects" })
-TabVisuals:AddToggle({ Name = "Bullet Tracer", Default = false, Callback = function(v)
-    TRACE.on=v; fl.tracer=v
-    if v then task.spawn(connect_trace_fn) else disableTracer_fn() end
-end })
+TabVisuals:CreateSection("Effects")
+TabVisuals:CreateToggle({ Name = "Bullet Tracer", CurrentValue = false, Flag = "fl_tracer",
+    Callback = function(v)
+        TRACE.on = v; fl.tracer = v
+        if v then task.spawn(connect_trace_fn) else disableTracer_fn() end
+    end })
 
 -- MODEL
-local TabModel = Window:MakeTab({ Name = "Model", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabModel:AddToggle({ Name = "Headless", Default = false, Callback = function(v)
-    fl.headless=v; pcall(applySkinAll)
-end })
+local TabModel = Window:CreateTab("Model", 4483345998)
+TabModel:CreateToggle({ Name = "Headless", CurrentValue = false, Flag = "fl_headless",
+    Callback = function(v) fl.headless = v; pcall(applySkinAll) end })
 
 -- JUMP
-local TabJump = Window:MakeTab({ Name = "Jump", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabJump:AddToggle({ Name = "Jump Circles", Default = false, Callback = function(v)
-    fl.jump=v; if v then mkJump() else clJump() end
-end })
-TabJump:AddSection({ Name = "Style" })
-TabJump:AddButton({ Name = "Classic", Callback = function() jStyle = "Classic" end })
-TabJump:AddButton({ Name = "Double Ring", Callback = function() jStyle = "Double" end })
-TabJump:AddButton({ Name = "Triple Ripple", Callback = function() jStyle = "Ripple" end })
-TabJump:AddButton({ Name = "Particle Burst", Callback = function() jStyle = "Particles" end })
+local TabJump = Window:CreateTab("Jump", 4483345998)
+TabJump:CreateToggle({ Name = "Jump Circles", CurrentValue = false, Flag = "fl_jump",
+    Callback = function(v) fl.jump = v; if v then mkJump() else clJump() end end })
+TabJump:CreateSection("Style")
+TabJump:CreateButton({ Name = "Classic",        Callback = function() jStyle = "Classic" end })
+TabJump:CreateButton({ Name = "Double Ring",    Callback = function() jStyle = "Double"  end })
+TabJump:CreateButton({ Name = "Triple Ripple",  Callback = function() jStyle = "Ripple"  end })
+TabJump:CreateButton({ Name = "Particle Burst", Callback = function() jStyle = "Particles" end })
 
 -- WORLD
-local TabWorld = Window:MakeTab({ Name = "World", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabWorld:AddToggle({ Name = "Cyberpunk Atmo", Default = false, Callback = function(v) fl.atmo=v; if v then mkAtmo() else clAtmo() end end })
-TabWorld:AddToggle({ Name = "FullBright", Default = false, Callback = function(v) fl.fb=v; if v then mkFB() else clFB() end end })
-TabWorld:AddToggle({ Name = "Skybox", Default = false, Callback = function(v) fl.sky=v; if v then mkSkybox() else clSkybox() end end })
-TabWorld:AddToggle({ Name = "Bloom", Default = false, Callback = function(v) fl.bloom=v; if v then mkBloom() else clBloom() end end })
-TabWorld:AddSection({ Name = "Time" })
-TabWorld:AddButton({ Name = "Day", Callback = function() applyTime("Day") end })
-TabWorld:AddButton({ Name = "Sunset", Callback = function() applyTime("Sunset") end })
-TabWorld:AddButton({ Name = "Night", Callback = function() applyTime("Night") end })
-TabWorld:AddButton({ Name = "Cyber", Callback = function() applyTime("Cyber") end })
-TabWorld:AddToggle({ Name = "Fog", Default = false, Callback = function(v) fl._fog=v; toggleFog(v) end })
+local TabWorld = Window:CreateTab("World", 4483345998)
+TabWorld:CreateToggle({ Name = "Cyberpunk Atmo", CurrentValue = false, Flag = "fl_atmo",
+    Callback = function(v) fl.atmo = v; if v then mkAtmo() else clAtmo() end end })
+TabWorld:CreateToggle({ Name = "FullBright",     CurrentValue = false, Flag = "fl_fb",
+    Callback = function(v) fl.fb = v; if v then mkFB() else clFB() end end })
+TabWorld:CreateToggle({ Name = "Skybox",         CurrentValue = false, Flag = "fl_sky",
+    Callback = function(v) fl.sky = v; if v then mkSkybox() else clSkybox() end end })
+TabWorld:CreateToggle({ Name = "Bloom",          CurrentValue = false, Flag = "fl_bloom",
+    Callback = function(v) fl.bloom = v; if v then mkBloom() else clBloom() end end })
+TabWorld:CreateSection("Time")
+TabWorld:CreateButton({ Name = "Day",    Callback = function() applyTime("Day") end })
+TabWorld:CreateButton({ Name = "Sunset", Callback = function() applyTime("Sunset") end })
+TabWorld:CreateButton({ Name = "Night",  Callback = function() applyTime("Night") end })
+TabWorld:CreateButton({ Name = "Cyber",  Callback = function() applyTime("Cyber") end })
+TabWorld:CreateToggle({ Name = "Fog", CurrentValue = false, Flag = "fl_fog",
+    Callback = function(v) fl._fog = v; toggleFog(v) end })
 
 -- ESP
-local TabEsp = Window:MakeTab({ Name = "ESP", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabEsp:AddToggle({ Name = "Role ESP", Default = false, Callback = function(v) fl.esp=v; if v then mkESP() else clESP() end end })
-TabEsp:AddToggle({ Name = "Ghost ESP", Default = true, Callback = function(v) fl.espGhost=v end })
-TabEsp:AddToggle({ Name = "Role Tag (text)", Default = false, Callback = function(v)
-    fl.roleTag=v
-    if not v then for pl in pairs(espTxtTags) do detachRoleTag(pl) end end
-end })
+local TabEsp = Window:CreateTab("ESP", 4483345998)
+TabEsp:CreateToggle({ Name = "Role ESP", CurrentValue = false, Flag = "fl_esp",
+    Callback = function(v) fl.esp = v; if v then mkESP() else clESP() end end })
+TabEsp:CreateToggle({ Name = "Ghost ESP", CurrentValue = true, Flag = "fl_espGhost",
+    Callback = function(v) fl.espGhost = v end })
+TabEsp:CreateToggle({ Name = "Role Tag (text)", CurrentValue = false, Flag = "fl_roleTag",
+    Callback = function(v)
+        fl.roleTag = v
+        if not v then for pl in pairs(espTxtTags) do detachRoleTag(pl) end end
+    end })
 
 -- THEME
-local TabTheme = Window:MakeTab({ Name = "Theme", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabTheme:AddSection({ Name = "Menu Theme" })
-TabTheme:AddColorPicker({
-    Name = "Accent Color",
-    Default = Color3.fromRGB(86,76,251),
-    Callback = function(c) pcall(function() OrionLib:ChangeColor("Accent", c) end) end
-})
-TabTheme:AddColorPicker({
-    Name = "Background",
-    Default = Color3.fromRGB(26,32,58),
-    Callback = function(c) pcall(function() OrionLib:ChangeColor("Background", c) end) end
-})
-TabTheme:AddColorPicker({
-    Name = "Element",
-    Default = Color3.fromRGB(38,45,71),
-    Callback = function(c) pcall(function() OrionLib:ChangeColor("Element", c) end) end
-})
+local TabTheme = Window:CreateTab("Theme", 4483345998)
+TabTheme:CreateSection("Presets")
+local function setAllColors(c)
+    for k in pairs(FC) do FC[k] = c end
+    for key in pairs(FC) do pcall(rebuildEffect, key) end
+    MakeNotif("Theme", "visual colors updated", 2)
+end
+TabTheme:CreateButton({ Name = "Cyan",    Callback = function() setAllColors(Color3.fromRGB(0, 220, 255)) end })
+TabTheme:CreateButton({ Name = "Magenta", Callback = function() setAllColors(Color3.fromRGB(255, 60, 200)) end })
+TabTheme:CreateButton({ Name = "Lime",    Callback = function() setAllColors(Color3.fromRGB(120, 255, 120)) end })
+TabTheme:CreateButton({ Name = "Amber",   Callback = function() setAllColors(Color3.fromRGB(255, 180, 60)) end })
+TabTheme:CreateButton({ Name = "Blood",   Callback = function() setAllColors(Color3.fromRGB(220, 40, 60)) end })
+TabTheme:CreateSection("Info")
+TabTheme:CreateButton({ Name = "Menu theme color", Callback = function()
+    MakeNotif("Theme", "edit CreateWindow colors to change menu вЂ” Rayfield fixes theme at load", 4)
+end })
 
 -- EXTRA
-local TabExtra = Window:MakeTab({ Name = "Extra", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabExtra:AddToggle({ Name = "Kill Lightning", Default = true, Callback = function(v) killOn=v end })
-TabExtra:AddToggle({ Name = "Backtrack", Default = false, Callback = function(v)
-    BT.on=v
-    if v then task.spawn(bt_build) end
+local TabExtra = Window:CreateTab("Extra", 4483345998)
+TabExtra:CreateToggle({ Name = "Kill Lightning", CurrentValue = true, Flag = "killOn",
+    Callback = function(v) killOn = v end })
+TabExtra:CreateToggle({ Name = "Backtrack", CurrentValue = false, Flag = "bt_on",
+    Callback = function(v) BT.on = v; if v then task.spawn(bt_build) end end })
+TabExtra:CreateToggle({ Name = "Anti AFK", CurrentValue = false, Flag = "fl_noafk",
+    Callback = function(v) fl.noafk = v end })
+TabExtra:CreateButton({ Name = "Reset Visual Colors", Callback = function()
+    for k in pairs(FC) do FC[k] = Color3.fromRGB(0, 220, 255) end
 end })
-TabExtra:AddToggle({ Name = "Anti AFK", Default = false, Callback = function(v) fl.noafk=v end })
-TabExtra:AddButton({ Name = "Reset Visual Colors", Callback = function() for k in pairs(FC) do FC[k]=Color3.fromRGB(0,220,255) end end })
-TabExtra:AddButton({ Name = "Clear Particles", Callback = function()
-    for _,p in ipairs(workspace:GetDescendants()) do
+TabExtra:CreateButton({ Name = "Clear Particles", Callback = function()
+    for _, p in ipairs(workspace:GetDescendants()) do
         if p:IsA("ParticleEmitter") then p:Destroy() end
     end
 end })
 
--- bind listener для горячих клавиш
+-- bind listener
 local function bindListener(input, gp)
-    if bindPicking then
-        if input.KeyCode == Enum.KeyCode.Escape then bindPicking = nil; return end
-        local entry = BINDS[bindPicking.key]
-        if entry then
-            entry.input = input.KeyCode ~= Enum.KeyCode.Unknown and input.KeyCode or input.UserInputType
-            saveBinds()
-            MakeNotif("Bind", entry.name.." → "..inputName(entry.input), 2)
-        end
-        bindPicking = nil
-        return
-    end
     if gp then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1 and MOVE.ctrltp then
         if UIS:IsKeyDown(Enum.KeyCode.LeftControl) or UIS:IsKeyDown(Enum.KeyCode.RightControl) then
@@ -1935,17 +1922,6 @@ local function bindListener(input, gp)
                 pcall(function() hrp.CFrame = CFrame.new(m.Hit.Position + Vector3.new(0,5,0)) end)
             end
             return
-        end
-    end
-    for _,v in pairs(BINDS) do
-        if type(v)=="table" and v.input and v.getter and v.setter then
-            if input.KeyCode == v.input and #v.input.Name > 1 then
-                local ok,c = pcall(v.getter)
-                if ok then
-                    pcall(v.setter, not c)
-                    if v.onUpdate then pcall(v.onUpdate) end
-                end
-            end
         end
     end
 end
@@ -2069,12 +2045,12 @@ ADDON.unload = function()
         WSH.hooked = nil; WSH.m = nil
     end
     pcall(function()
-        local cg = game.CoreGui:FindFirstChild("Orion")
+        local cg = game.CoreGui:FindFirstChild("Rayfield")
         if cg then cg:Destroy() end
     end)
     getgenv().UN_ADDON = nil
     print("[addon] unloaded")
 end
 
-MakeNotif("StarWare", "Loaded · right shift to hide menu", 4)
-print("[addon] v3 ready — Orion UI")
+MakeNotif("StarWare", "Loaded В· right shift to hide menu", 4)
+print("[addon] v3 ready вЂ” Rayfield UI")
