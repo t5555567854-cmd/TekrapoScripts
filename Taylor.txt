@@ -1,7 +1,8 @@
 --!nocheck
 --!nolint
 -- ============================================================
---  STARWARE v2 + SHAXED AIM — pretty menu · per-visual colors
+--  STARWARE v2 — full build
+--  aim always-on · murderer-only · multi-hook · pretty menu
 -- ============================================================
 if getgenv().UN_ADDON and getgenv().UN_ADDON.loaded then
     pcall(function() getgenv().UN_ADDON.unload() end)
@@ -25,7 +26,6 @@ if not LP then
 end
 local Cam        = workspace.CurrentCamera
 
--- TOASTS
 local PG = LP:WaitForChild("PlayerGui")
 local toastGui = PG:FindFirstChild("UN_ADDON_TOASTS")
 if not toastGui then
@@ -40,15 +40,15 @@ local function notif(text, on)
     toastIndex = toastIndex + 1
     local idx = toastIndex
     local t = Instance.new("TextLabel")
-    t.Size = UDim2.new(0, 230, 0, 30)
-    t.Position = UDim2.new(1, -250, 0, 100 + (idx % 8) * 34)
+    t.Size = UDim2.new(0, 240, 0, 32)
+    t.Position = UDim2.new(1, -260, 0, 100 + (idx % 8) * 36)
     t.BackgroundColor3 = on and Color3.fromRGB(40,160,70) or Color3.fromRGB(80,25,25)
     t.TextColor3 = Color3.new(1,1,1)
-    t.Text = "  "..tostring(text).."  "..(on and "[ON]" or "[OFF]")
+    t.Text = "  "..tostring(text).."  ·  "..(on and "ON" or "OFF")
     t.Font = Enum.Font.GothamBold; t.TextSize = 12
     t.BorderSizePixel = 0; t.TextXAlignment = Enum.TextXAlignment.Left
-    t.BackgroundTransparency = 0.15; t.Parent = toastGui
-    Instance.new("UICorner", t).CornerRadius = UDim.new(0, 6)
+    t.BackgroundTransparency = 0.1; t.Parent = toastGui
+    Instance.new("UICorner", t).CornerRadius = UDim.new(1, 8)
     local s = Instance.new("UIStroke", t)
     s.Color = on and Color3.fromRGB(120,255,160) or Color3.fromRGB(255,140,140)
     s.Thickness = 1.2
@@ -61,7 +61,6 @@ local function notif(text, on)
     end)
 end
 
--- BINDS
 local BINDS = {}
 local BIND_FILE = "un_addon_binds.json"
 local bindPicking = nil
@@ -95,8 +94,8 @@ local function registerBind(key, name, getter, setter)
     BINDS[key] = { input=nil, name=name, getter=getter, setter=setter }
 end
 
--- STATE
-local SA    = { enabled=false, auto=true, predMs=100, part="Torso", quiet=true, wb=true }
+-- aim включён по умолчанию, таргет — только мурдерер
+local SA    = { enabled=true, part="Torso", quiet=true, wb=true }
 local SA_hist = {}
 local KS    = { enabled=false }
 local KA    = { on=false, dist=30, last=0 }
@@ -140,7 +139,6 @@ local SZ = { trail=1.5, parts=1.6, hat=1.4, foot=2.2, jump=4, bounce=0.5,
     orbAura=2.5, lightning=0.7, snow=1.2, glow=0.3, tracer=0.15,
     esp=0.5, ghost=0.3, atmo=0.35, rainbow=0.4, skyDust=1.5, bloom=1.4 }
 
--- per-visual palette
 local PALETTE = {
     {name="Cyan",   c=Color3.fromRGB(0,220,255)},
     {name="Purple", c=Color3.fromRGB(160,80,255)},
@@ -171,7 +169,6 @@ local startFly, stopFly, startSpin, stopSpin, moveReset
 local applyTime, toggleFog, ka_tick, hookKills
 local bt_destroy, bt_build, bt_update, bt_conn
 
--- ROLE CACHE
 local roleCacheMod=nil
 local roleCache={}
 local roleCacheStamp=0
@@ -222,7 +219,6 @@ local function UP()  local c=LP.Character; return c and (c:FindFirstChild("Upper
 local function HEAD() local c=LP.Character; return c and c:FindFirstChild("Head") end
 local function LT(c) return Color3.new(math.min(1,c.R*1.4),math.min(1,c.G*1.4),math.min(1,c.B*1.4)) end
 
--- TARGETING
 local rp=RaycastParams.new()
 rp.FilterType=Enum.RaycastFilterType.Exclude
 local SNAP=48
@@ -270,7 +266,6 @@ nearest_player=function()
     return best
 end
 local function spush(now,pos) snap_i=snap_i%SNAP+1; snap_t[snap_i]=now; snap_p[snap_i]=pos; if snap_n<SNAP then snap_n=snap_n+1 end end
-local function sget(k) local i=(snap_i-k-1)%SNAP+1; return snap_t[i], snap_p[i] end
 local function track_clear() track.part=nil; track.pos=nil; track.vel=Vector3.zero; track.ready=false; snap_n,snap_i=0,0 end
 local function track_step(now)
     local p=target_part
@@ -288,9 +283,8 @@ local function sample_ping()
     rtt=math.clamp(rtt,0,1)
     if EC.seen then EC.rtt=EC.rtt*0.85+rtt*0.15 else EC.rtt=rtt; EC.seen=true end
 end
-local function lead_time() if not EC.seen then return 0 end return math.clamp(EC.rtt,0,0.5) end
+local function lead_time() if not EC.seen then return 0.1 end return math.clamp(EC.rtt,0,0.5) end
 
--- SHAXED AIM
 task.spawn(function()
     while ADDON.loaded do
         task.wait(0.05)
@@ -386,7 +380,7 @@ local function SA_findQuietSpot(mRoot, myChar)
     end
 end
 
--- WEAPON HOOK
+-- WEAPON HOOK — ловит разные имена функций в WeaponService
 local WSH={}
 get_ws_fn=function()
     local ok,m=pcall(function() return require(Replicated:WaitForChild("ClientServices"):WaitForChild("WeaponService")) end)
@@ -419,14 +413,11 @@ local function resolve()
     if not root then return nil end
 
     local vel = SA_getVel(root)
-    local lead
-    if SA.auto then
-        local ok, ms = pcall(function() return Stats.Network.ServerStatsItem["Data Ping"]:GetValue() end)
-        local ping = (ok and type(ms) == "number") and ms or 100
-        lead = math.clamp(ping / 2000 + 0.1, 0, 0.45)
-    else
-        lead = SA.predMs / 1000
-    end
+    -- автопредикт из пинга
+    local ok, ms = pcall(function() return Stats.Network.ServerStatsItem["Data Ping"]:GetValue() end)
+    local ping = (ok and type(ms) == "number") and ms or 100
+    local lead = math.clamp(ping / 2000 + 0.1, 0, 0.45)
+
     local hum2 = c:FindFirstChildOfClass("Humanoid")
     local dy = 0
     if hum2 and hum2.FloorMaterial == Enum.Material.Air then
@@ -475,25 +466,40 @@ install_hooks=function()
         WSH.m = cur
         WSH.om = nil
         WSH.os = nil
+        WSH.hooked = {}
     end
-    if WSH.om and WSH.os then return end
+    if not WSH.hooked then WSH.hooked = {} end
     pcall(function() setreadonly(cur,false) end)
-    if type(cur.GetMouseTargetCFrame)=="function" and not WSH.om then
-        WSH.om=cur.GetMouseTargetCFrame
-        cur.GetMouseTargetCFrame=function(self,...)
-            local pt=resolve()
-            if pt then return CFrame.new(pt) end
-            return WSH.om(self,...)
+
+    local candidates = {
+        "GetMouseTargetCFrame",
+        "GetTargetPosition",
+        "GetTargetCFrame",
+        "GetAimPosition",
+        "GetShootCFrame",
+        "GetShootTarget",
+        "GetBulletOrigin",
+        "CalculateAim",
+        "ComputeTarget",
+        "GetFiringVector",
+    }
+    for _, name in ipairs(candidates) do
+        if type(cur[name])=="function" and not WSH.hooked[name] then
+            local orig = cur[name]
+            cur[name] = function(self, ...)
+                local pt = resolve()
+                if pt then
+                    local n = select("#", ...)
+                    if n >= 2 then return pt end
+                    return CFrame.new(pt)
+                end
+                return orig(self, ...)
+            end
+            WSH.hooked[name] = orig
         end
     end
-    if type(cur.GetTargetPosition)=="function" and not WSH.os then
-        WSH.os=cur.GetTargetPosition
-        cur.GetTargetPosition=function(self,x,y,...)
-            local pt=resolve()
-            if pt then return pt end
-            return WSH.os(self,x,y,...)
-        end
-    end
+    WSH.om = WSH.hooked.GetMouseTargetCFrame
+    WSH.os = WSH.hooked.GetTargetPosition
 end
 getgenv().KNIFE_AIM_RESOLVE=function()
     if not KS.enabled then return nil end
@@ -1523,7 +1529,7 @@ local function killAll()
 end
 
 -- ============================================================
--- MENU  (pretty)
+-- MENU
 -- ============================================================
 local function buildMenu()
     local sg = Instance.new("ScreenGui")
@@ -1534,7 +1540,6 @@ local function buildMenu()
     sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     sg.Parent = PG
 
-    -- ===== main frame =====
     local main = Instance.new("Frame")
     main.Name = "Main"
     main.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1548,13 +1553,10 @@ local function buildMenu()
     local mst = Instance.new("UIStroke", main)
     mst.Color = A; mst.Thickness = 1.5; mst.Transparency = 0.25
     local mstGrad = Instance.new("UIGradient", mst)
-    mstGrad.Color = ColorSequence.new(A, A2)
-    mstGrad.Rotation = 45
+    mstGrad.Color = ColorSequence.new(A, A2); mstGrad.Rotation = 45
     local mainScale = Instance.new("UIScale", main); mainScale.Scale = 0.9
 
-    -- outer glow
     local glow = Instance.new("Frame", main)
-    glow.Name = "Glow"
     glow.Size = UDim2.new(1, 20, 1, 20)
     glow.Position = UDim2.new(0, -10, 0, -10)
     glow.BackgroundColor3 = A
@@ -1563,7 +1565,6 @@ local function buildMenu()
     glow.ZIndex = -1
     Instance.new("UICorner", glow).CornerRadius = UDim.new(0, 24)
 
-    -- ===== header =====
     local header = Instance.new("Frame")
     header.Name = "Header"
     header.Size = UDim2.new(1, 0, 0, 48)
@@ -1572,17 +1573,14 @@ local function buildMenu()
     header.Parent = main
     Instance.new("UICorner", header).CornerRadius = UDim.new(0, 16)
 
-    -- header gradient strip
     local hg = Instance.new("Frame", header)
     hg.Size = UDim2.new(1, 0, 0, 2)
     hg.Position = UDim2.new(0, 0, 1, -2)
     hg.BackgroundColor3 = A
     hg.BorderSizePixel = 0
     local hgGrad = Instance.new("UIGradient", hg)
-    hgGrad.Color = ColorSequence.new(A, A2)
-    hgGrad.Rotation = 0
+    hgGrad.Color = ColorSequence.new(A, A2); hgGrad.Rotation = 0
 
-    -- logo dot
     local logoDot = Instance.new("Frame", header)
     logoDot.Size = UDim2.new(0, 24, 0, 24)
     logoDot.Position = UDim2.new(0, 16, 0.5, -12)
@@ -1590,8 +1588,7 @@ local function buildMenu()
     logoDot.BorderSizePixel = 0
     Instance.new("UICorner", logoDot).CornerRadius = UDim.new(1, 0)
     local dotGrad = Instance.new("UIGradient", logoDot)
-    dotGrad.Color = ColorSequence.new(A, A2)
-    dotGrad.Rotation = 45
+    dotGrad.Color = ColorSequence.new(A, A2); dotGrad.Rotation = 45
     local dotInner = Instance.new("Frame", logoDot)
     dotInner.Size = UDim2.new(0, 8, 0, 8)
     dotInner.Position = UDim2.new(0.5, -4, 0.5, -4)
@@ -1610,8 +1607,7 @@ local function buildMenu()
     title.Text = "STARWARE"
     title.Parent = header
     local tGrad = Instance.new("UIGradient", title)
-    tGrad.Color = ColorSequence.new(A, A2)
-    tGrad.Rotation = 0
+    tGrad.Color = ColorSequence.new(A, A2); tGrad.Rotation = 0
 
     local subtitle = Instance.new("TextLabel")
     subtitle.BackgroundTransparency = 1
@@ -1621,10 +1617,9 @@ local function buildMenu()
     subtitle.TextSize = 9
     subtitle.TextColor3 = A2
     subtitle.TextXAlignment = Enum.TextXAlignment.Left
-    subtitle.Text = "v2 · shaxed edition"
+    subtitle.Text = "v2 · aim always-on"
     subtitle.Parent = header
 
-    -- window buttons (pretty circles)
     local function winBtn(label, xo, baseColor)
         local b = Instance.new("TextButton")
         b.Size = UDim2.new(0, 30, 0, 30)
@@ -1654,7 +1649,6 @@ local function buildMenu()
     minBtn.TextColor3 = Color3.fromRGB(220,220,220)
     local closeBtn = winBtn("×", -52, Color3.fromRGB(200,60,80))
 
-    -- drag
     do
         local dragging, dragStart, startPos
         local function inFrame(pos, frame)
@@ -1690,7 +1684,6 @@ local function buildMenu()
         end)
     end
 
-    -- ===== tabs (pill) =====
     local tabBar = Instance.new("Frame")
     tabBar.Size = UDim2.new(1, -16, 0, 40)
     tabBar.Position = UDim2.new(0, 8, 0, 56)
@@ -1717,7 +1710,7 @@ local function buildMenu()
     tp.PaddingLeft = UDim.new(0, 8); tp.PaddingRight = UDim.new(0, 8)
 
     local content = Instance.new("Frame")
-    content.Size = UDim2.new(1, -16, 1, -114)
+    content.Size = UDim2.new(1, -16, 1, -124)
     content.Position = UDim2.new(0, 8, 0, 106)
     content.BackgroundTransparency = 1
     content.BorderSizePixel = 0
@@ -1731,6 +1724,53 @@ local function buildMenu()
     fadeOverlay.BorderSizePixel = 0
     fadeOverlay.ZIndex = 50
 
+    -- status bar bottom
+    local statusBar = Instance.new("Frame", main)
+    statusBar.Size = UDim2.new(1, -24, 0, 22)
+    statusBar.Position = UDim2.new(0, 12, 1, -26)
+    statusBar.BackgroundTransparency = 1
+    statusBar.BorderSizePixel = 0
+
+    local function mkStat(xs, anchor)
+        local l = Instance.new("TextLabel")
+        l.BackgroundTransparency = 1
+        l.Size = UDim2.new(xs, 0, 1, 0)
+        l.Position = UDim2.new(anchor, 0, 0, 0)
+        l.Font = Enum.Font.GothamBold
+        l.TextSize = 11
+        l.TextColor3 = A2
+        l.TextXAlignment = anchor == 0 and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right
+        l.Parent = statusBar
+        return l
+    end
+    local lblFps   = mkStat(0.3, 0)
+    local lblPing  = mkStat(0.3, 0.35)
+    lblPing.TextXAlignment = Enum.TextXAlignment.Center
+    local lblTgt   = mkStat(0.3, 0.7)
+    lblTgt.TextXAlignment = Enum.TextXAlignment.Right
+
+    task.spawn(function()
+        while ADDON.loaded do
+            local t0 = tick()
+            RS.RenderStepped:Wait()
+            local fps = math.floor(1/math.max(tick()-t0,0.0001))
+            local ping = 0
+            pcall(function() ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()) end)
+            if lblFps.Parent then lblFps.Text = "FPS "..fps end
+            if lblPing.Parent then lblPing.Text = "PING "..ping end
+            if lblTgt.Parent then
+                if target_p and target_p.Character then
+                    lblTgt.Text = "◎ "..target_p.Name
+                    lblTgt.TextColor3 = A
+                else
+                    lblTgt.Text = "◎ no target"
+                    lblTgt.TextColor3 = Color3.fromRGB(140,140,150)
+                end
+            end
+            task.wait(0.5)
+        end
+    end)
+
     local function section(parent, text)
         local f = Instance.new("Frame")
         f.Size = UDim2.new(1, -8, 0, 26)
@@ -1743,8 +1783,7 @@ local function buildMenu()
         bar.BorderSizePixel = 0
         Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
         local barGrad = Instance.new("UIGradient", bar)
-        barGrad.Color = ColorSequence.new(A, A2)
-        barGrad.Rotation = 90
+        barGrad.Color = ColorSequence.new(A, A2); barGrad.Rotation = 90
         local l = Instance.new("TextLabel")
         l.BackgroundTransparency = 1
         l.Size = UDim2.new(1, -8, 1, 0)
@@ -1786,9 +1825,6 @@ local function buildMenu()
         pill.BorderSizePixel = 0
         pill.Parent = row
         Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
-        local pillGrad = Instance.new("UIGradient", pill)
-        pillGrad.Color = ColorSequence.new(Color3.fromRGB(60,60,75), Color3.fromRGB(40,40,55))
-        pillGrad.Rotation = 0
         local knob = Instance.new("Frame")
         knob.Size = UDim2.new(0, 18, 0, 18)
         knob.Position = UDim2.new(0, 2, 0.5, -9)
@@ -1887,9 +1923,7 @@ local function buildMenu()
         fill.Parent = bar
         Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
         local fillGrad = Instance.new("UIGradient", fill)
-        fillGrad.Color = ColorSequence.new(A, A2)
-        fillGrad.Rotation = 0
-        -- knob handle
+        fillGrad.Color = ColorSequence.new(A, A2); fillGrad.Rotation = 0
         local handle = Instance.new("Frame")
         handle.Size = UDim2.new(0, 16, 0, 16)
         handle.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1937,7 +1971,6 @@ local function buildMenu()
         return f, upd
     end
 
-    -- tabs
     local tabs = {}
     local currentBtn = nil
     local function addTab(name, order)
@@ -1980,9 +2013,8 @@ local function buildMenu()
             for _, t in ipairs(tabs) do
                 t.btn.BackgroundColor3 = Color3.fromRGB(30,30,40)
                 t.btn.TextColor3 = Color3.fromRGB(180,190,210)
-                if t.btn:FindFirstChildOfClass("UIGradient") then
-                    t.btn:FindFirstChildOfClass("UIGradient").Color = ColorSequence.new(Color3.fromRGB(30,30,40), Color3.fromRGB(24,24,32))
-                end
+                local g = t.btn:FindFirstChildOfClass("UIGradient")
+                if g then g.Color = ColorSequence.new(Color3.fromRGB(30,30,40), Color3.fromRGB(24,24,32)) end
                 t.page.Visible = false
             end
             b.BackgroundColor3 = A
@@ -2012,7 +2044,6 @@ local function buildMenu()
         Tween:Create(mainScale, TweenInfo.new(0.4, Enum.EasingStyle.Back), {Scale=1}):Play()
     end)
 
-    -- animated shimmer on stroke
     local startT = os.clock()
     RS.RenderStepped:Connect(function()
         if not main.Visible then return end
@@ -2027,14 +2058,12 @@ local function buildMenu()
         tGrad.Color = ColorSequence.new(col, A2)
     end)
 
-    -- ============ COMBAT ============
+    -- COMBAT
     local pCombat = addTab("Combat", 1)
-    section(pCombat, "Silent Aim · shaxed")
-    toggle(pCombat, "Silent Aim", function() return SA.enabled end, function(v) SA.enabled=v; if v then pcall(install_hooks) end end)
+    section(pCombat, "Silent Aim")
+    toggle(pCombat, "Silent Aim (always on)", function() return SA.enabled end, function(v) SA.enabled=v; if v then pcall(install_hooks) end end)
     toggle(pCombat, "WallBang (find spot)", function() return SA.wb end, function(v) SA.wb=v end)
     toggle(pCombat, "Quiet Peek", function() return SA.quiet end, function(v) SA.quiet=v end)
-    toggle(pCombat, "Auto Prediction", function() return SA.auto end, function(v) SA.auto=v end)
-    slider(pCombat, "Prediction ms", 0, 700, function() return SA.predMs end, function(v) SA.predMs=v; SA.auto=false end)
     button(pCombat, "Aim Part: Torso", function()
         SA.part = SA.part == "Torso" and "Head" or "Torso"
         notif("Aim part: "..SA.part, true)
@@ -2053,7 +2082,7 @@ local function buildMenu()
         else grab_desc_stop() end
     end)
 
-    -- ============ MOVE ============
+    -- MOVE
     local pMove = addTab("Move", 2)
     section(pMove, "Walk")
     toggle(pMove, "Walkspeed", function() return MOVE.speedOn end, function(v) MOVE.speedOn=v; applySpeed() end)
@@ -2108,7 +2137,7 @@ local function buildMenu()
     toggle(pMove, "Anti Fling", function() return fl.antifling==true end, function(v) fl.antifling=v end)
     toggle(pMove, "Ctrl+Click TP", function() return MOVE.ctrltp==true end, function(v) MOVE.ctrltp=v end)
 
-    -- ============ TROLL ============
+    -- TROLL
     local pTroll = addTab("Troll", 3)
     button(pTroll, "Fling Nearest", flingNearest)
     button(pTroll, "Fling All", flingAll)
@@ -2157,11 +2186,10 @@ local function buildMenu()
         task.delay(3, function() MOVE.spin=false; pcall(stopSpin) end)
     end)
 
-    -- ============ VISUALS ============
+    -- VISUALS + color picker
     local pV = addTab("Visuals", 4)
-
     section(pV, "Color picker")
-    -- viz selector row
+
     local VIZ_LIST = {
         {key="trail",     label="Trail"},
         {key="parts",     label="Aura"},
@@ -2232,7 +2260,6 @@ local function buildMenu()
     end
     renderVizButtons()
 
-    -- palette row
     local palRow = Instance.new("Frame")
     palRow.Size = UDim2.new(1, -8, 0, 46)
     palRow.BackgroundColor3 = Color3.fromRGB(24,24,32)
@@ -2310,11 +2337,11 @@ local function buildMenu()
         if v then task.spawn(connect_trace_fn) else disableTracer_fn() end
     end)
 
-    -- ============ MODEL ============
+    -- MODEL
     local pModel = addTab("Model", 5)
     toggle(pModel, "Headless", function() return fl.headless==true end, function(v) fl.headless=v; pcall(applySkinAll) end)
 
-    -- ============ JUMP ============
+    -- JUMP
     local pJ = addTab("Jump", 6)
     toggle(pJ, "Jump Circles", function() return fl.jump end, function(v) fl.jump=v; if v then mkJump() else clJump() end end)
     section(pJ, "Style")
@@ -2323,7 +2350,7 @@ local function buildMenu()
     button(pJ, "Triple Ripple",  function() jStyle = "Ripple" end)
     button(pJ, "Particle Burst", function() jStyle = "Particles" end)
 
-    -- ============ WORLD ============
+    -- WORLD
     local pW = addTab("World", 7)
     toggle(pW, "Cyberpunk Atmo", function() return fl.atmo end, function(v) fl.atmo=v; if v then mkAtmo() else clAtmo() end end)
     toggle(pW, "FullBright",     function() return fl.fb end, function(v) fl.fb=v; if v then mkFB() else clFB() end end)
@@ -2336,7 +2363,7 @@ local function buildMenu()
     button(pW, "Cyber",  function() applyTime("Cyber") end)
     toggle(pW, "Fog", function() return fl._fog end, function(v) fl._fog=v; toggleFog(v) end)
 
-    -- ============ ESP ============
+    -- ESP
     local pE = addTab("ESP", 8)
     toggle(pE, "Role ESP",  function() return fl.esp end, function(v) fl.esp=v; if v then mkESP() else clESP() end end)
     toggle(pE, "Ghost ESP", function() return fl.espGhost end, function(v) fl.espGhost=v end)
@@ -2345,7 +2372,7 @@ local function buildMenu()
         if not v then for pl in pairs(espTxtTags) do detachRoleTag(pl) end end
     end)
 
-    -- ============ THEME ============
+    -- THEME
     local pT = addTab("Theme", 9)
     local function setTheme(name)
         cur = name
@@ -2360,7 +2387,6 @@ local function buildMenu()
         dotInner.BackgroundColor3 = BG2
         mst.Color = A
         title.TextColor3 = A
-        accent.BackgroundColor3 = A
         fadeOverlay.BackgroundColor3 = BG
         mstGrad.Color = ColorSequence.new(A, A2)
         dotGrad.Color = ColorSequence.new(A, A2)
@@ -2372,7 +2398,7 @@ local function buildMenu()
         button(pT, name, function() setTheme(name) end)
     end
 
-    -- ============ EXTRA ============
+    -- EXTRA
     local pX = addTab("Extra", 10)
     toggle(pX, "Kill Lightning", function() return killOn end, function(v) killOn=v end)
     toggle(pX, "Backtrack", function() return BT.on end, function(v)
@@ -2387,7 +2413,45 @@ local function buildMenu()
         end
     end)
 
-    -- ============ FLOATING OPEN BUTTON ============
+    -- watermark
+    local wm = Instance.new("TextLabel", sg)
+    wm.AnchorPoint = Vector2.new(1, 0)
+    wm.Size = UDim2.new(0, 260, 0, 26)
+    wm.Position = UDim2.new(1, -12, 0, 12)
+    wm.BackgroundColor3 = Color3.fromRGB(10,10,16)
+    wm.BackgroundTransparency = 0.35
+    wm.BorderSizePixel = 0
+    wm.Font = Enum.Font.GothamBold
+    wm.TextSize = 12
+    wm.TextColor3 = A2
+    wm.TextXAlignment = Enum.TextXAlignment.Right
+    wm.Text = " STARWARE · 0 active "
+    wm.Parent = sg
+    Instance.new("UICorner", wm).CornerRadius = UDim.new(0, 8)
+    local wmStroke = Instance.new("UIStroke", wm)
+    wmStroke.Color = A; wmStroke.Thickness = 1; wmStroke.Transparency = 0.4
+
+    task.spawn(function()
+        while ADDON.loaded do
+            local n = 0
+            if SA.enabled then n = n + 1 end
+            if KS.enabled then n = n + 1 end
+            if KA.on then n = n + 1 end
+            if MOVE.fly then n = n + 1 end
+            if MOVE.noclip then n = n + 1 end
+            if MOVE.speedOn then n = n + 1 end
+            if fl.esp then n = n + 1 end
+            if fl.trail then n = n + 1 end
+            if fl.hat then n = n + 1 end
+            if fl.rainbow then n = n + 1 end
+            if TRACE.on then n = n + 1 end
+            if BT.on then n = n + 1 end
+            wm.Text = " STARWARE · "..n.." active "
+            task.wait(0.4)
+        end
+    end)
+
+    -- floating open btn
     local showBtn = Instance.new("TextButton")
     showBtn.Name = "OpenMenu"
     showBtn.Size = UDim2.new(0, 56, 0, 56)
@@ -2627,10 +2691,12 @@ ADDON.unload = function()
     for pl in pairs(espTxtTags) do detachRoleTag(pl) end
     pcall(function() if fl._fog then toggleFog(false) end end)
     local m = WSH.m
-    if m then
+    if m and WSH.hooked then
         pcall(function() setreadonly(m,false) end)
-        if WSH.om then pcall(function() m.GetMouseTargetCFrame = WSH.om end) end
-        if WSH.os then pcall(function() m.GetTargetPosition = WSH.os end) end
+        for name, orig in pairs(WSH.hooked) do
+            pcall(function() m[name] = orig end)
+        end
+        WSH.om = nil; WSH.os = nil; WSH.hooked = nil; WSH.m = nil
     end
     if PG then
         local o = PG:FindFirstChild("UN_ADDON_GUI"); if o then pcall(function() o:Destroy() end) end
@@ -2640,4 +2706,4 @@ ADDON.unload = function()
     print("[addon] unloaded")
 end
 
-print("[addon] ready · pretty menu · per-visual colors")
+print("[addon] ready · aim always-on · multi-hook")
