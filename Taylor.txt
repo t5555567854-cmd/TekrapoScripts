@@ -416,7 +416,6 @@ local function resolve()
     local root = c:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
 
-    -- vel history prediction
     local vel = SA_getVel(root)
     local lead
     if SA.auto then
@@ -434,7 +433,6 @@ local function resolve()
     end
     local off = Vector3.new(vel.X * lead, dy, vel.Z * lead)
 
-    -- wallbang: find visible spot near target
     local mChar = c
     local myChar = LP.Character
     local att = myChar and myChar:FindFirstChild("HumanoidRootPart") and myChar.HumanoidRootPart:FindFirstChild("GunRaycastAttachment")
@@ -443,7 +441,6 @@ local function resolve()
     if SA.wb and muzzle and SA_rayBlocked(muzzle, root.Position, { mChar, myChar }) and not SA_anyVisible(mChar, muzzle) then
         wbSpot = SA_findWbSpot(root, muzzle)
     end
-    -- quiet peek
     local quietCf
     if SA.quiet and not wbSpot then
         quietCf = SA_findQuietSpot(root, myChar)
@@ -1540,7 +1537,7 @@ local function killAll()
 end
 
 -- ============================================================
--- MENU (IMPROVED — shaxed style)
+-- MENU
 -- ============================================================
 local function buildMenu()
     local sg = Instance.new("ScreenGui")
@@ -1621,7 +1618,6 @@ local function buildMenu()
     closeBtn.Parent = header
     Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
 
-    -- header accent line
     local accent = Instance.new("Frame", main)
     accent.Size = UDim2.new(1, -24, 0, 1)
     accent.Position = UDim2.new(0, 12, 0, 46)
@@ -1629,44 +1625,42 @@ local function buildMenu()
     accent.BorderSizePixel = 0
     local accentGrad = Instance.new("UIGradient", accent)
 
-    -- DRAG
+    -- ============================================================
+    -- DRAG (header only, кнопки исключены)
+    -- ============================================================
     do
         local dragging, dragStart, startPos
-        local function inside(pos, frame)
+        local function inFrame(pos, frame)
             if not frame or not frame.Parent then return false end
             local ap, as = frame.AbsolutePosition, frame.AbsoluteSize
             return pos.X >= ap.X and pos.X <= ap.X + as.X
                and pos.Y >= ap.Y and pos.Y <= ap.Y + as.Y
         end
-        local function begin(i)
+        UIS.InputBegan:Connect(function(i, gp)
+            if gp then return end
             if i.UserInputType ~= Enum.UserInputType.MouseButton1
             and i.UserInputType ~= Enum.UserInputType.Touch then return end
             if not main.Visible then return end
-            if not inside(i.Position, header) then return end
-            if inside(i.Position, minBtn) or inside(i.Position, themeBtn) or inside(i.Position, closeBtn) then return end
-            dragging = true
+            if not inFrame(i.Position, header) then return end
+            if inFrame(i.Position, themeBtn) or inFrame(i.Position, minBtn) or inFrame(i.Position, closeBtn) then return end
+            dragging  = true
             dragStart = i.Position
-            startPos = main.Position
-        end
-        local function move(i)
+            startPos  = main.Position
+        end)
+        UIS.InputChanged:Connect(function(i)
             if not dragging then return end
-            if i.UserInputType ~= Enum.UserInputType.MouseMovement
-            and i.UserInputType ~= Enum.UserInputType.Touch then return end
             local d = i.Position - dragStart
             main.Position = UDim2.new(
                 startPos.X.Scale, startPos.X.Offset + d.X,
                 startPos.Y.Scale, startPos.Y.Offset + d.Y
             )
-        end
-        local function endDrag(i)
+        end)
+        UIS.InputEnded:Connect(function(i)
             if i.UserInputType == Enum.UserInputType.MouseButton1
             or i.UserInputType == Enum.UserInputType.Touch then
                 dragging = false
             end
-        end
-        UIS.InputBegan:Connect(begin)
-        UIS.InputChanged:Connect(move)
-        UIS.InputEnded:Connect(endDrag)
+        end)
     end
 
     local tabBar = Instance.new("Frame")
@@ -1925,7 +1919,6 @@ local function buildMenu()
             b.TextColor3 = Color3.new(1,1,1)
             page.Visible = true
             currentBtn = b
-            -- fade
             fadeOverlay.BackgroundTransparency = 0
             Tween:Create(fadeOverlay, TweenInfo.new(0.3), {BackgroundTransparency=1}):Play()
             page.CanvasPosition = Vector2.zero
@@ -1945,7 +1938,6 @@ local function buildMenu()
         Tween:Create(mainScale, TweenInfo.new(0.35, Enum.EasingStyle.Back), {Scale=1}):Play()
     end)
 
-    -- shimmer animation
     local startT = os.clock()
     RS.RenderStepped:Connect(function()
         if not main.Visible then return end
@@ -1963,7 +1955,7 @@ local function buildMenu()
         accentGrad.Color = seq
     end)
 
-    -- ============ COMBAT (shaxed aim) ============
+    -- ============ COMBAT ============
     local pCombat = addTab("Combat", 1)
     section(pCombat, "Silent Aim · shaxed")
     toggle(pCombat, "Silent Aim", function() return SA.enabled end, function(v) SA.enabled=v; if v then pcall(install_hooks) end end)
@@ -2185,68 +2177,92 @@ local function buildMenu()
         end
     end)
 
+    -- ============ FLOATING OPEN BUTTON ============
+    local showBtn = Instance.new("TextButton")
+    showBtn.Name = "OpenMenu"
+    showBtn.Size = UDim2.new(0, 56, 0, 56)
+    showBtn.Position = UDim2.new(0, 16, 0, 90)
+    showBtn.BackgroundColor3 = A
+    showBtn.BorderSizePixel = 0
+    showBtn.Font = Enum.Font.GothamBlack
+    showBtn.TextSize = 22
+    showBtn.TextColor3 = Color3.new(1,1,1)
+    showBtn.Text = "★"
+    showBtn.Visible = false
+    showBtn.Active = true
+    showBtn.Parent = sg
+    Instance.new("UICorner", showBtn).CornerRadius = UDim.new(0, 14)
+    local showStroke = Instance.new("UIStroke", showBtn)
+    showStroke.Color = A2; showStroke.Thickness = 1.5; showStroke.Transparency = 0.2
+
+    do
+        local d, ds, sp
+        showBtn.InputBegan:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1
+            or i.UserInputType == Enum.UserInputType.Touch then
+                d = true; ds = i.Position; sp = showBtn.Position
+            end
+        end)
+        UIS.InputChanged:Connect(function(i)
+            if d and (i.UserInputType == Enum.UserInputType.MouseMovement
+            or i.UserInputType == Enum.UserInputType.Touch) then
+                local dl = i.Position - ds
+                showBtn.Position = UDim2.new(sp.X.Scale, sp.X.Offset + dl.X,
+                                             sp.Y.Scale, sp.Y.Offset + dl.Y)
+            end
+        end)
+        showBtn.InputEnded:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1
+            or i.UserInputType == Enum.UserInputType.Touch then
+                local moved = (i.Position - ds).Magnitude
+                d = false
+                if moved < 8 then
+                    main.Visible = true
+                    showBtn.Visible = false
+                    mainScale.Scale = 0.85
+                    Tween:Create(mainScale, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Scale=1}):Play()
+                end
+            end
+        end)
+    end
+
+    local function hideMenu()
+        main.Visible = false
+        showBtn.Visible = true
+        showBtn.BackgroundColor3 = A
+        showStroke.Color = A2
+    end
+    local function showMenu()
+        main.Visible = true
+        showBtn.Visible = false
+        mainScale.Scale = 0.85
+        Tween:Create(mainScale, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Scale=1}):Play()
+    end
+
     themeBtn.MouseButton1Click:Connect(function()
         local keys = {}
-        for k in pairs(TH) do keys[#keys+1]=k end
+        for k in pairs(TH) do keys[#keys+1] = k end
         local idx = 1
-        for i,k in ipairs(keys) do if k==cur then idx=i break end end
-        idx = idx%#keys+1
+        for i, k in ipairs(keys) do if k == cur then idx = i break end end
+        idx = idx % #keys + 1
         setTheme(keys[idx])
     end)
 
-    closeBtn.MouseButton1Click:Connect(function()
-        if getgenv().UN_ADDON and getgenv().UN_ADDON.unload then
-            pcall(function() getgenv().UN_ADDON.unload() end)
-        else
-            if sg and sg.Parent then sg:Destroy() end
+    minBtn.MouseButton1Click:Connect(function() hideMenu() end)
+    closeBtn.MouseButton1Click:Connect(function() hideMenu() end)
+
+    UIS.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.KeyCode == Enum.KeyCode.RightShift then
+            if main.Visible then hideMenu() else showMenu() end
         end
     end)
 
-    local showBtn
-    local hidden = false
-    minBtn.MouseButton1Click:Connect(function()
-        hidden = true
-        main.Visible = false
-        if not showBtn then
-            showBtn = Instance.new("TextButton")
-            showBtn.Size = UDim2.new(0, 60, 0, 44)
-            showBtn.Position = UDim2.new(0, 12, 0, 60)
-            showBtn.BackgroundColor3 = A
-            showBtn.BorderSizePixel = 0
-            showBtn.Font = Enum.Font.GothamBlack
-            showBtn.TextSize = 14
-            showBtn.TextColor3 = Color3.new(1,1,1)
-            showBtn.Text = "★"
-            showBtn.Parent = sg
-            Instance.new("UICorner", showBtn).CornerRadius = UDim.new(0, 10)
-            local d, ds, sp
-            showBtn.InputBegan:Connect(function(i)
-                if i.UserInputType == Enum.UserInputType.MouseButton1
-                or i.UserInputType == Enum.UserInputType.Touch then
-                    d=true; ds=i.Position; sp=showBtn.Position
-                end
-            end)
-            showBtn.InputEnded:Connect(function(i)
-                if i.UserInputType == Enum.UserInputType.MouseButton1
-                or i.UserInputType == Enum.UserInputType.Touch then
-                    d=false
-                    if (i.Position-ds).Magnitude<8 then
-                        hidden=false
-                        main.Visible=true
-                        mainScale.Scale=0.9
-                        Tween:Create(mainScale, TweenInfo.new(0.25, Enum.EasingStyle.Back), {Scale=1}):Play()
-                    end
-                end
-            end)
-            UIS.InputChanged:Connect(function(i)
-                if d and (i.UserInputType == Enum.UserInputType.MouseMovement
-                or i.UserInputType == Enum.UserInputType.Touch) then
-                    local dl = i.Position - ds
-                    showBtn.Position = UDim2.new(sp.X.Scale, sp.X.Offset+dl.X, sp.Y.Scale, sp.Y.Offset+dl.Y)
-                end
-            end)
+    UIS.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.KeyCode == Enum.KeyCode.Escape and main.Visible then
+            hideMenu()
         end
-        showBtn.Visible = true
     end)
 
     return sg
