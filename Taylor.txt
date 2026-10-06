@@ -22,9 +22,9 @@ end
 local Cam        = workspace.CurrentCamera
 
 -- ============================================================
--- ORION UI
+-- ORION UI (Qanuir fork — актуальное зеркало)
 -- ============================================================
-local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Orion/main/source'))()
+local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/Qanuir/orion-ui/refs/heads/main/source.lua'))()
 
 local function MakeNotif(name, content, dur)
     pcall(function()
@@ -1559,7 +1559,7 @@ local function killAll()
 end
 
 -- ============================================================
--- ORION MENU
+-- ORION MENU (Qanuir fork)
 -- ============================================================
 local Window = OrionLib:MakeWindow({
     Name = "StarWare v3",
@@ -1799,7 +1799,7 @@ local function rebuildEffect(key)
     if key=="atmo"      and fl.atmo      then pcall(clAtmo);  pcall(mkAtmo)  end
 end
 
-TabVisuals:AddColorPicker({
+TabVisuals:AddColorpicker({
     Name = "Pick Color",
     Default = Color3.fromRGB(0,220,255),
     Callback = function(color)
@@ -1874,17 +1874,17 @@ end })
 -- THEME
 local TabTheme = Window:MakeTab({ Name = "Theme", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 TabTheme:AddSection({ Name = "Menu Theme" })
-TabTheme:AddColorPicker({
+TabTheme:AddColorpicker({
     Name = "Accent Color",
     Default = Color3.fromRGB(86,76,251),
     Callback = function(c) pcall(function() OrionLib:ChangeColor("Accent", c) end) end
 })
-TabTheme:AddColorPicker({
+TabTheme:AddColorpicker({
     Name = "Background",
     Default = Color3.fromRGB(26,32,58),
     Callback = function(c) pcall(function() OrionLib:ChangeColor("Background", c) end) end
 })
-TabTheme:AddColorPicker({
+TabTheme:AddColorpicker({
     Name = "Element",
     Default = Color3.fromRGB(38,45,71),
     Callback = function(c) pcall(function() OrionLib:ChangeColor("Element", c) end) end
@@ -2045,5 +2045,6 @@ ADDON.unload = function()
     print("[addon] unloaded")
 end
 
-MakeNotif("StarWare", "Loaded · right shift to hide menu", 4)
-print("[addon] v3 ready — Orion UI")
+OrionLib:Init()
+MakeNotif("StarWare", "Loaded В· right shift to hide menu", 4)
+print("[addon] v3 ready вЂ” Orion UI (Qanuir fork)")
