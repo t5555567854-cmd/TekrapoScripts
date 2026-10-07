@@ -455,16 +455,19 @@ local function SA_confidence(c, hum2, root, muzzle)
         s = s * SA_jumpScore(hum2, root)
     end
 
-    local vis, tot = 0, 0
-    for _, n in ipairs(SA_BODY) do
-        local pt = c:FindFirstChild(n)
-        if pt and pt:IsA("BasePart") then
-            tot = tot + 1
-            if not SA_rayBlocked(muzzle, pt.Position, { c }) then vis = vis + 1 end
+    -- видимость учитываем только когда wallCheck активен
+    if SA.wallCheck then
+        local vis, tot = 0, 0
+        for _, n in ipairs(SA_BODY) do
+            local pt = c:FindFirstChild(n)
+            if pt and pt:IsA("BasePart") then
+                tot = tot + 1
+                if not SA_rayBlocked(muzzle, pt.Position, { c }) then vis = vis + 1 end
+            end
         end
-    end
-    if tot > 0 then
-        s = s * (0.4 + 0.6 * (vis / tot))
+        if tot > 0 then
+            s = s * (0.4 + 0.6 * (vis / tot))
+        end
     end
 
     local phase = SA_phase[c]
@@ -2042,7 +2045,7 @@ TabTroll:AddButton({ Name = "Dizzy", Callback = function()
     task.delay(3, function() MOVE.spin=false; pcall(stopSpin) end)
 end })
 
--- VISUALS — палитра у каждого эффекта своя
+-- VISUALS
 local TabVisuals = Window:MakeTab({ Name = "Visuals", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 
 local function rebuildEffect(key)
@@ -2281,7 +2284,6 @@ end)
 ADDON.hb = RS.Heartbeat:Connect(function()
     if not ADDON.loaded then return end
     pcall(function()
-        -- чистка phase-трекера
         for k in pairs(SA_phase) do
             local h = k and k:FindFirstChildOfClass("Humanoid")
             if not k or not k.Parent or not h or h.Health <= 0 then
