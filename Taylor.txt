@@ -3,6 +3,8 @@
 -- ============================================================
 -- StarWare v3 · Orion UI (Qanuir fork)
 -- aim intelligence: anti-spam-jumper · auto-predict · best-moment · wall-check
+-- wallCheck ON  → aim только по видимым (жёсткий LOS)
+-- wallCheck OFF → aim через стены
 -- ============================================================
 if getgenv().UN_ADDON and getgenv().UN_ADDON.loaded then
     pcall(function() getgenv().UN_ADDON.unload() end)
@@ -401,8 +403,6 @@ end
 -- ============================================================
 -- [AIM INTELLIGENCE] anti-spam-jumper · auto-predict · best-moment
 -- ============================================================
-
--- фаза прыжка: 1.0 = лучший момент для выстрела
 local function SA_jumpScore(hum2, root)
     if not hum2 or not root then return 1 end
     local st = hum2:GetState()
@@ -417,7 +417,6 @@ local function SA_jumpScore(hum2, root)
     else return 1.0 end
 end
 
--- авто-предикт: сам выбирает стратегию под состояние цели
 local function SA_predict(hum2, root, lead)
     if not SA.autoPred then
         local v = SA_getVel(root)
@@ -446,7 +445,6 @@ local function SA_predict(hum2, root, lead)
     return Vector3.new(vBase.X * lead, math.clamp(vBase.Y * lead, -3, 3), vBase.Z * lead)
 end
 
--- композитный скор "стоит ли стрелять сейчас"
 local function SA_confidence(c, hum2, root, muzzle)
     if not SA.bestMoment then return 1 end
     local s = 1
@@ -551,14 +549,13 @@ local function resolve()
     local muzzle = att and att.WorldPosition or (myRoot and myRoot.Position)
     if not muzzle then return nil end
 
-    -- >>> WALL CHECK <<<
+    -- >>> WALL CHECK (жёсткий гейт) <<<
     if SA.wallCheck then
         local losMuzzle = SA_wallCheck(muzzle, c)
         local camCf = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position
         local losCamera = SA.wallCheckCamera and SA_wallCheck(camCf, c)
         if not (losMuzzle or losCamera) then
-            -- нет чистой линии — либо wallbang, либо пропуск кадра
-            if not SA.wb then return nil end
+            return nil  -- стена — выстрела нет
         end
     end
 
@@ -568,8 +565,11 @@ local function resolve()
         return nil
     end
 
+    -- wallbang активен только при выключенном wallCheck
     local wbSpot
-    if SA.wb and SA_rayBlocked(muzzle, root.Position, { c, myChar }) and not SA_anyVisible(c, muzzle) then
+    if not SA.wallCheck and SA.wb
+       and SA_rayBlocked(muzzle, root.Position, { c, myChar })
+       and not SA_anyVisible(c, muzzle) then
         wbSpot = SA_findWbSpot(root, muzzle)
     end
     if wbSpot and att then
