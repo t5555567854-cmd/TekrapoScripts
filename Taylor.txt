@@ -2,7 +2,7 @@
 --!nolint
 -- ============================================================
 -- StarWare v3 · Orion UI (Qanuir fork)
--- aim: FOV · angle-bias · lateral-bias · p90-rtt · двухпроходный лид · weighted head · wall check
+-- aim: FOV · angle-bias · lateral-bias · p90-rtt · двухпроходный лид · weighted head
 -- fling: orbit · slam · spin · anchor-break
 -- ============================================================
 if getgenv().UN_ADDON and getgenv().UN_ADDON.loaded then
@@ -58,8 +58,7 @@ end
 -- ============================================================
 local SA = { enabled=true, part="Torso", quiet=true, wb=true, wbTemp=nil, antiJump=true,
     autoPred=true, bestMoment=true, jumpRadar=25, confFloor=0.5,
-    fov=180, angleBias=0.4, lateralBias=1.6, blend=0.35,
-    wallCheck=true, wallMin=0.25, wallGrace=0.18 }
+    fov=180, angleBias=0.4, lateralBias=1.6, blend=0.35 }
 
 local SA_hist = {}
 local SA_phase = {}
@@ -82,8 +81,9 @@ local moveConns = { infJump=nil, noclip=nil, nc={} }
 local flyConn, spinConn
 local antiJumpConn = nil
 
+-- fling config
 local FLING = {
-    mode = "orbit",
+    mode = "orbit",         -- orbit | slam | spin | anchor
     force = 9e8,
     duration = 2.2,
     active = false,
@@ -236,42 +236,6 @@ local function SA_anyVisible(targetChar, origin)
     return false
 end
 
--- wall check: weighted visibility + grace window
--- returns visible(bool), ratio(0..1), lastSeenDelta(sec, math.huge if never)
-local SA_lastSeen = setmetatable({}, {__mode = "k"})
-
-local function SA_wallCheck(tchar, origin)
-    if not tchar then return false, 0, math.huge end
-    local ignore = { tchar }
-    local myChar = LP.Character
-    if myChar and myChar ~= tchar then table.insert(ignore, myChar) end
-    local now = os.clock()
-    local visW, totW = 0, 0
-    for _, n in ipairs(SA_BODY) do
-        local pt = tchar:FindFirstChild(n)
-        if pt and pt:IsA("BasePart") then
-            local w = BODY_WEIGHT[n] or 1
-            totW = totW + w
-            if not SA_rayBlocked(origin, pt.Position, ignore) then
-                visW = visW + w
-            end
-        end
-    end
-    if totW == 0 then return false, 0, math.huge end
-    local ratio = visW / totW
-    local visible = ratio >= SA.wallMin
-    local delta
-    if visible then
-        SA_lastSeen[tchar] = now
-        delta = 0
-    else
-        local last = SA_lastSeen[tchar]
-        delta = last and (now - last) or math.huge
-        if delta <= SA.wallGrace then visible = true end
-    end
-    return visible, ratio, delta
-end
-
 local function SA_targetScore(p, camPos, camLook)
     local c = p.Character
     if not c then return math.huge end
@@ -296,17 +260,10 @@ local function SA_targetScore(p, camPos, camLook)
         else jumpMul = 0.6 end
     end
 
-    local ignore = { c }
-    if LP.Character then table.insert(ignore, LP.Character) end
-    local occluded = SA_rayBlocked(camPos, head.Position, ignore)
+    local occluded = SA_rayBlocked(camPos, head.Position, { c })
     local anglePenalty = 1 + (angle / math.max(SA.fov, 1)) * SA.angleBias * 4
     local score = dist * anglePenalty * jumpMul
     if occluded then score = score * 1.4 end
-
-    if SA.wallCheck then
-        local visible = SA_wallCheck(c, camPos)
-        if not visible then return math.huge end
-    end
 
     return score
 end
@@ -514,17 +471,13 @@ local function SA_confidence(c, hum2, root, muzzle)
         s = s * SA_jumpScore(hum2, root)
     end
 
-    local myChar = LP.Character
-    local ignore = { c }
-    if myChar then table.insert(ignore, myChar) end
-
     local wvis, wtot = 0, 0
     for _, n in ipairs(SA_BODY) do
         local pt = c:FindFirstChild(n)
         if pt and pt:IsA("BasePart") then
             local w = BODY_WEIGHT[n] or 1
             wtot = wtot + w
-            if not SA_rayBlocked(muzzle, pt.Position, ignore) then
+            if not SA_rayBlocked(muzzle, pt.Position, { c }) then
                 wvis = wvis + w
             end
         end
@@ -629,12 +582,6 @@ local function resolve()
     if SA.wb and SA_rayBlocked(muzzle, root.Position, { c, myChar }) and not SA_anyVisible(c, muzzle) then
         wbSpot = SA_findWbSpot(root, muzzle)
     end
-
-    if SA.wallCheck and not wbSpot then
-        local visible = SA_wallCheck(c, muzzle)
-        if not visible then return nil end
-    end
-
     if wbSpot and att then
         SA.wbTemp = { att = att, orig = att.WorldCFrame }
         pcall(function() att.WorldCFrame = CFrame.new(wbSpot) end)
@@ -1166,8 +1113,10 @@ task.spawn(function()
 end)
 
 -- ============================================================
--- [FLING]
+-- [FLING] — четыре режима, усиленная физика
 -- ============================================================
+
+-- общий префикс: сохранить состояние, выключить seated, обнулить скорость
 local function flingSetup(hrp, hum2)
     local old = {}
     old.cf = hrp.CFrame
@@ -1195,6 +1144,7 @@ local function flingTeardown(hrp, hum2, old)
     end
 end
 
+-- режим 1: orbit — цель вокруг жертвы с нарастающей угловой скоростью
 local function flingOrbit(hrp, thum, thrp, dur)
     local ang = 0
     local t0 = os.clock()
@@ -1226,6 +1176,7 @@ local function flingOrbit(hrp, thum, thrp, dur)
     safe_destroy(bv); safe_destroy(bav)
 end
 
+-- режим 2: slam — прямая инъекция скорости через BodyVelocity+BodyAngularVelocity
 local function flingSlam(hrp, thum, thrp, dur)
     local t0 = os.clock()
     local bv = Instance.new("BodyVelocity")
@@ -1245,6 +1196,7 @@ local function flingSlam(hrp, thum, thrp, dur)
     safe_destroy(bv); safe_destroy(bav)
 end
 
+-- режим 3: spin — вращение вокруг цели с накоплением угловой скорости
 local function flingSpin(hrp, thum, thrp, dur)
     local t0 = os.clock()
     local bav = Instance.new("BodyAngularVelocity")
@@ -1267,6 +1219,7 @@ local function flingSpin(hrp, thum, thrp, dur)
     safe_destroy(bav); safe_destroy(bv)
 end
 
+-- режим 4: anchor-break — временная анкоризация, swing через pivot, потом отпуск
 local function flingAnchor(hrp, thum, thrp, dur)
     local t0 = os.clock()
     local wasAnchored = hrp.Anchored
@@ -2060,28 +2013,6 @@ local function killAll()
 end
 
 -- ============================================================
--- [STATUS HELPERS]
--- ============================================================
-local function aimStatusString()
-    local tp = target_p and target_p.Name or "none"
-    local rtt = string.format("%.0fms", (EC.rtt or 0) * 1000)
-    local jit = string.format("%.0fms", (EC.jitter or 0) * 1000)
-    local ratio = "-"
-    if target_char then
-        local _, r = SA_wallCheck(target_char, Cam and Cam.CFrame.Position or Vector3.zero)
-        ratio = string.format("%.2f", r)
-    end
-    return string.format("target=%s  rtt=%s  jit=%s  vis=%s", tp, rtt, jit, ratio)
-end
-
-local function panicOff()
-    SA.enabled=false; KS.enabled=false; KA.on=false
-    TRACE.on=false; autograb_on=false; grab_desc_stop()
-    pcall(restore_wb)
-    MakeNotif("StarWare","Panic · aim/grab/trace off",2)
-end
-
--- ============================================================
 -- [MENU] Orion (Qanuir fork)
 -- ============================================================
 local Window = OrionLib:MakeWindow({
@@ -2106,21 +2037,6 @@ TabCombat:AddToggle({ Name = "WallBang", Default = true, Callback = function(v)
 end })
 TabCombat:AddToggle({ Name = "Quiet Peek", Default = true, Callback = function(v)
     SA.quiet = v; MakeNotif("Quiet Peek", v and "enabled" or "disabled", 2)
-end })
-
-TabCombat:AddSection({ Name = "Visibility" })
-TabCombat:AddToggle({ Name = "Wall Check", Default = true, Callback = function(v)
-    SA.wallCheck = v; MakeNotif("Wall Check", v and "enabled" or "disabled", 2)
-end })
-TabCombat:AddSlider({ Name = "Wall Min Visible", Min = 0.05, Max = 0.75, Default = 0.25, Increment = 0.05,
-    ValueName = "ratio", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) SA.wallMin = v end })
-TabCombat:AddSlider({ Name = "Wall Grace", Min = 0.0, Max = 0.5, Default = 0.18, Increment = 0.02,
-    ValueName = "s", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) SA.wallGrace = v end })
-TabCombat:AddButton({ Name = "Clear Wall Cache", Callback = function()
-    for k in pairs(SA_lastSeen) do SA_lastSeen[k] = nil end
-    MakeNotif("Wall Check","cache cleared",2)
 end })
 
 TabCombat:AddSection({ Name = "Intelligence" })
@@ -2152,22 +2068,10 @@ TabCombat:AddSlider({ Name = "Switch Blend", Min = 0.0, Max = 1.0, Default = 0.3
     ValueName = "coef", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) SA.blend = v end })
 
-TabCombat:AddSection({ Name = "Aim Tools" })
 TabCombat:AddButton({ Name = "Switch Aim Part", Callback = function()
     SA.part = SA.part == "Torso" and "Head" or "Torso"
     MakeNotif("Aim Part", SA.part, 2)
 end })
-TabCombat:AddButton({ Name = "Clear Target Lock", Callback = function()
-    target_p=nil; target_char=nil; target_part=nil; target_hum=nil
-    SA_lock.lastChar=nil; SA_lock.lastPos=nil; SA_lock.blendT=0
-    table.clear(SA_hist); table.clear(SA_phase)
-    for k in pairs(SA_lastSeen) do SA_lastSeen[k] = nil end
-    MakeNotif("Aim","lock cleared",2)
-end })
-TabCombat:AddButton({ Name = "Print Aim Status", Callback = function()
-    MakeNotif("Aim Status", aimStatusString(), 4)
-end })
-TabCombat:AddButton({ Name = "PANIC (aim/grab/trace off)", Callback = function() panicOff() end })
 TabCombat:AddToggle({ Name = "Knife Silent", Default = false, Callback = function(v)
     KS.enabled = v; MakeNotif("Knife Silent", v and "enabled" or "disabled", 2)
 end })
@@ -2265,7 +2169,7 @@ TabMove:AddToggle({ Name = "Anti Fall", Default = false, Callback = function(v) 
 TabMove:AddToggle({ Name = "Anti Fling", Default = false, Callback = function(v) fl.antifling=v end })
 TabMove:AddToggle({ Name = "Ctrl+Click TP", Default = false, Callback = function(v) MOVE.ctrltp=v end })
 
--- TROLL
+-- TROLL — обновлённые режимы fling
 local TabTroll = Window:MakeTab({ Name = "Troll", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 TabTroll:AddSection({ Name = "Fling" })
 TabTroll:AddDropdown({
@@ -2538,22 +2442,6 @@ TabExtra:AddButton({ Name = "Clear Particles", Callback = function()
     end
 end })
 
-TabExtra:AddSection({ Name = "Aim Diagnostics" })
-TabExtra:AddButton({ Name = "Print Aim Status", Callback = function()
-    MakeNotif("Aim Status", aimStatusString(), 4)
-end })
-TabExtra:AddButton({ Name = "Clear Wall Cache", Callback = function()
-    for k in pairs(SA_lastSeen) do SA_lastSeen[k] = nil end
-    MakeNotif("Wall Check","cache cleared",2)
-end })
-TabExtra:AddButton({ Name = "Clear Target Lock", Callback = function()
-    target_p=nil; target_char=nil; target_part=nil; target_hum=nil
-    SA_lock.lastChar=nil; SA_lock.lastPos=nil; SA_lock.blendT=0
-    table.clear(SA_hist); table.clear(SA_phase)
-    for k in pairs(SA_lastSeen) do SA_lastSeen[k] = nil end
-    MakeNotif("Aim","lock cleared",2)
-end })
-
 -- ============================================================
 -- [BIND LISTENER]
 -- ============================================================
@@ -2715,4 +2603,4 @@ end
 
 OrionLib:Init()
 MakeNotif("StarWare", "Loaded · right shift to hide menu", 4)
-print("[addon] v3 ready — Orion UI (Qanuir fork) · wall check wired · own-char ignored")
+print("[addon] v3 ready — Orion UI (Qanuir fork)")
