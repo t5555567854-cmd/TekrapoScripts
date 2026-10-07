@@ -50,7 +50,6 @@ local antiJumpConn
 
 local FLING = { mode="orbit", force=9e8, duration=2.2, active=false }
 
--- WALL CHECK
 local WC = { on=false, blockedColor=Color3.fromRGB(255,60,60), visColor=Color3.fromRGB(60,255,60),
     showVis=true, showBlocked=true, depth="always" }
 local wcConn = nil
@@ -615,7 +614,6 @@ local function wc_clear()
         end
     end
 end
-
 local function wc_apply(pl, blocked)
     local c = pl.Character; if not c then return end
     local h = c:FindFirstChild("sWC")
@@ -623,7 +621,6 @@ local function wc_apply(pl, blocked)
         h = Instance.new("Highlight")
         h.Name = "sWC"
         h.OutlineTransparency = 0
-        h.DepthMode = WC.depth == "always" and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
         h.Parent = c
     end
     h.DepthMode = WC.depth == "always" and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
@@ -635,7 +632,6 @@ local function wc_apply(pl, blocked)
         h.FillTransparency = 0.65
     end
 end
-
 local function wc_start()
     wc_clear()
     wcConn = RS.Heartbeat:Connect(function()
@@ -994,7 +990,7 @@ task.spawn(function()
 end)
 
 -- ============================================================
--- [FLING] — 4 режима
+-- [FLING]
 -- ============================================================
 local function flingSetup(hrp, hum2)
     local old = {}
@@ -1176,7 +1172,7 @@ end
 local function stopTroll() TROLL.flinging = false end
 
 -- ============================================================
--- [VISUALS] — функции без изменений, полный список
+-- [VISUALS]
 -- ============================================================
 local function mkTrail()
     local up=UP(); if not up then return end
@@ -1810,177 +1806,216 @@ local function killAll()
 end
 
 -- ============================================================
--- [CUSTOM UI]
+-- [CUSTOM UI] v2 — flat sub-rows
 -- ============================================================
 local UI = (function()
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "StarWareMenu"
-    gui.ResetOnSpawn = false
-    gui.IgnoreGuiInset = true
-    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    local ok_create, gui = pcall(function()
+        local g = Instance.new("ScreenGui")
+        g.Name = "StarWareMenu"
+        g.ResetOnSpawn = false
+        g.IgnoreGuiInset = true
+        g.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        return g
+    end)
+    if not ok_create or not gui then
+        warn("[StarWare] ScreenGui create failed")
+        return {
+            gui = nil,
+            AddSection = function() return nil end,
+            AddFeature = function()
+                return { AddSub = function() end, Set = function() end }
+            end,
+        }
+    end
+
     pcall(function() gui.Parent = game:GetService("CoreGui") end)
     if not gui.Parent then gui.Parent = LP:WaitForChild("PlayerGui") end
 
-    local root = Instance.new("Frame", gui)
+    local root = Instance.new("Frame")
     root.Name = "Root"
     root.Size = UDim2.new(0, 660, 0, 460)
     root.Position = UDim2.new(0.5, -330, 0.5, -230)
-    root.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    root.BackgroundColor3 = Color3.fromRGB(0,0,0)
     root.BorderSizePixel = 0
     root.Active = true
     root.Draggable = true
-    root.ClipsDescendants = true
+    root.Parent = gui
     Instance.new("UICorner", root).CornerRadius = UDim.new(0, 8)
     local stroke = Instance.new("UIStroke", root)
-    stroke.Color = Color3.fromRGB(50, 50, 50); stroke.Thickness = 1
+    stroke.Color = Color3.fromRGB(50,50,50)
+    stroke.Thickness = 1
 
-    local top = Instance.new("Frame", root)
+    local top = Instance.new("Frame")
     top.Size = UDim2.new(1, 0, 0, 36)
-    top.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+    top.BackgroundColor3 = Color3.fromRGB(10,10,10)
     top.BorderSizePixel = 0
+    top.Parent = root
+    Instance.new("UICorner", top).CornerRadius = UDim.new(0, 8)
 
-    local title = Instance.new("TextLabel", top)
+    local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, -100, 1, 0)
     title.Position = UDim2.new(0, 16, 0, 0)
     title.BackgroundTransparency = 1
     title.Text = "StarWare"
-    title.TextColor3 = Color3.fromRGB(220, 220, 220)
+    title.TextColor3 = Color3.fromRGB(220,220,220)
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.Font = Enum.Font.GothamBold
     title.TextSize = 14
+    title.Parent = top
 
-    local function mkCorner(p) Instance.new("UICorner", p).CornerRadius = UDim.new(0, 4) end
-    local hideBtn = Instance.new("TextButton", top)
+    local hideBtn = Instance.new("TextButton")
     hideBtn.Size = UDim2.new(0, 24, 0, 24)
     hideBtn.Position = UDim2.new(1, -62, 0.5, -12)
-    hideBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    hideBtn.Text = "-"; hideBtn.TextColor3 = Color3.fromRGB(200,200,200)
-    hideBtn.Font = Enum.Font.GothamBold; hideBtn.TextSize = 14
-    hideBtn.BorderSizePixel = 0; hideBtn.AutoButtonColor = false
-    mkCorner(hideBtn)
+    hideBtn.BackgroundColor3 = Color3.fromRGB(25,25,25)
+    hideBtn.Text = "-"
+    hideBtn.TextColor3 = Color3.fromRGB(200,200,200)
+    hideBtn.Font = Enum.Font.GothamBold
+    hideBtn.TextSize = 14
+    hideBtn.BorderSizePixel = 0
+    hideBtn.AutoButtonColor = false
+    hideBtn.Parent = top
+    Instance.new("UICorner", hideBtn).CornerRadius = UDim.new(0, 4)
 
-    local closeBtn = Instance.new("TextButton", top)
+    local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0, 24, 0, 24)
     closeBtn.Position = UDim2.new(1, -32, 0.5, -12)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    closeBtn.Text = "x"; closeBtn.TextColor3 = Color3.fromRGB(200,200,200)
-    closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 14
-    closeBtn.BorderSizePixel = 0; closeBtn.AutoButtonColor = false
-    mkCorner(closeBtn)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(25,25,25)
+    closeBtn.Text = "x"
+    closeBtn.TextColor3 = Color3.fromRGB(200,200,200)
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 14
+    closeBtn.BorderSizePixel = 0
+    closeBtn.AutoButtonColor = false
+    closeBtn.Parent = top
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 4)
 
-    local sidebar = Instance.new("Frame", root)
+    local sidebar = Instance.new("Frame")
     sidebar.Size = UDim2.new(0, 160, 1, -36)
     sidebar.Position = UDim2.new(0, 0, 0, 36)
-    sidebar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    sidebar.BackgroundColor3 = Color3.fromRGB(35,35,35)
     sidebar.BorderSizePixel = 0
+    sidebar.Parent = root
 
-    local sbScroll = Instance.new("ScrollingFrame", sidebar)
+    local sbScroll = Instance.new("ScrollingFrame")
     sbScroll.Size = UDim2.new(1, -16, 1, -16)
     sbScroll.Position = UDim2.new(0, 8, 0, 8)
     sbScroll.BackgroundTransparency = 1
     sbScroll.BorderSizePixel = 0
     sbScroll.ScrollBarThickness = 3
     sbScroll.ScrollBarImageColor3 = Color3.fromRGB(80,80,80)
-    sbScroll.CanvasSize = UDim2.new()
+    sbScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     sbScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    local sbLayout = Instance.new("UIListLayout", sbScroll)
-    sbLayout.Padding = UDim.new(0, 4); sbLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    sbScroll.Parent = sidebar
+    local sbLay = Instance.new("UIListLayout")
+    sbLay.Padding = UDim.new(0, 4)
+    sbLay.SortOrder = Enum.SortOrder.LayoutOrder
+    sbLay.Parent = sbScroll
 
-    local content = Instance.new("Frame", root)
+    local content = Instance.new("Frame")
     content.Size = UDim2.new(1, -160, 1, -36)
     content.Position = UDim2.new(0, 160, 0, 36)
-    content.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    content.BackgroundColor3 = Color3.fromRGB(0,0,0)
     content.BorderSizePixel = 0
+    content.Parent = root
 
     local pages = {}
     local currentPage = nil
+    local pageOrder = 0
+
     local function showPage(id)
-        for k, v in pairs(pages) do v.frame.Visible = (k == id) end
+        for k, v in pairs(pages) do
+            v.frame.Visible = (k == id)
+            v.button.BackgroundColor3 = (k == id) and Color3.fromRGB(60,60,60) or Color3.fromRGB(45,45,45)
+        end
         currentPage = id
     end
 
-    local api = { gui = gui, root = root }
-
-    function api:AddSection(name)
-        local btn = Instance.new("TextButton", sbScroll)
+    local function makeSection(name)
+        pageOrder = pageOrder + 1
+        local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(1, 0, 0, 32)
         btn.BackgroundColor3 = Color3.fromRGB(45,45,45)
-        btn.Text = "  " .. name
+        btn.Text = "  " .. tostring(name)
         btn.TextColor3 = Color3.fromRGB(200,200,200)
         btn.Font = Enum.Font.GothamMedium
         btn.TextSize = 13
         btn.TextXAlignment = Enum.TextXAlignment.Left
         btn.BorderSizePixel = 0
         btn.AutoButtonColor = false
+        btn.LayoutOrder = pageOrder
+        btn.Parent = sbScroll
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
 
-        local page = Instance.new("ScrollingFrame", content)
+        local page = Instance.new("ScrollingFrame")
         page.Size = UDim2.new(1, -24, 1, -24)
         page.Position = UDim2.new(0, 12, 0, 12)
         page.BackgroundTransparency = 1
         page.BorderSizePixel = 0
         page.ScrollBarThickness = 3
         page.ScrollBarImageColor3 = Color3.fromRGB(80,80,80)
-        page.CanvasSize = UDim2.new()
+        page.CanvasSize = UDim2.new(0, 0, 0, 0)
         page.AutomaticCanvasSize = Enum.AutomaticSize.Y
         page.Visible = false
-        local layout = Instance.new("UIListLayout", page)
-        layout.Padding = UDim.new(0, 6); layout.SortOrder = Enum.SortOrder.LayoutOrder
+        page.Parent = content
+        local lay = Instance.new("UIListLayout")
+        lay.Padding = UDim.new(0, 6)
+        lay.SortOrder = Enum.SortOrder.LayoutOrder
+        lay.Parent = page
 
         pages[name] = { frame = page, button = btn }
 
-        btn.MouseButton1Click:Connect(function()
-            for _, v in pairs(pages) do v.button.BackgroundColor3 = Color3.fromRGB(45,45,45) end
-            btn.BackgroundColor3 = Color3.fromRGB(60,60,60)
-            showPage(name)
-        end)
+        btn.MouseButton1Click:Connect(function() showPage(name) end)
+        if currentPage == nil then showPage(name) end
 
-        if not currentPage then
-            btn.BackgroundColor3 = Color3.fromRGB(60,60,60)
-            showPage(name)
-        end
         return page
     end
 
-    local function mkColorPopup()
-        local popup = Instance.new("Frame", gui)
+    local globalPicker
+    local function makePicker()
+        local popup = Instance.new("Frame")
         popup.Size = UDim2.new(0, 200, 0, 150)
         popup.BackgroundColor3 = Color3.fromRGB(15,15,15)
         popup.BorderSizePixel = 0
         popup.Visible = false
         popup.ZIndex = 100
+        popup.Parent = gui
         Instance.new("UICorner", popup).CornerRadius = UDim.new(0, 6)
         local ps = Instance.new("UIStroke", popup)
-        ps.Color = Color3.fromRGB(60,60,60); ps.Thickness = 1
+        ps.Color = Color3.fromRGB(60,60,60)
+        ps.Thickness = 1
 
-        local state = { color = Color3.fromRGB(255,255,255), callback = nil, channels = {} }
+        local color = Color3.fromRGB(255,255,255)
+        local cb = nil
+        local dragName = nil
+        local rows = {}
 
         local function refresh()
-            for _, ch in ipairs(state.channels) do
-                local v = ch.name == "R" and state.color.R or ch.name == "G" and state.color.G or state.color.B
-                ch.fill.Size = UDim2.new(v, 0, 1, 0)
-                ch.label.Text = ch.name .. ": " .. math.floor(v * 255)
+            for i, r in ipairs(rows) do
+                local v = (i == 1 and color.R) or (i == 2 and color.G) or color.B
+                r.fill.Size = UDim2.new(v, 0, 1, 0)
+                r.lbl.Text = r.name .. ": " .. math.floor(v * 255)
             end
-            if state.callback then pcall(state.callback, state.color) end
+            if cb then pcall(cb, color) end
         end
 
-        for idx, chName in ipairs({ "R", "G", "B" }) do
-            local y = (idx - 1) * 28
-            local bar = Instance.new("Frame", popup)
+        for i, chName in ipairs({ "R", "G", "B" }) do
+            local bar = Instance.new("Frame")
             bar.Size = UDim2.new(1, -20, 0, 22)
-            bar.Position = UDim2.new(0, 10, 0, 10 + y)
+            bar.Position = UDim2.new(0, 10, 0, 10 + (i - 1) * 28)
             bar.BackgroundColor3 = Color3.fromRGB(30,30,30)
             bar.BorderSizePixel = 0
+            bar.Parent = popup
             Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 3)
 
-            local fill = Instance.new("Frame", bar)
+            local fill = Instance.new("Frame")
             fill.Size = UDim2.new(0, 0, 1, 0)
             fill.BackgroundColor3 = Color3.fromRGB(86,76,251)
             fill.BackgroundTransparency = 0.3
             fill.BorderSizePixel = 0
+            fill.Parent = bar
             Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 3)
 
-            local lbl = Instance.new("TextLabel", bar)
+            local lbl = Instance.new("TextLabel")
             lbl.Size = UDim2.new(1, -8, 1, 0)
             lbl.Position = UDim2.new(0, 6, 0, 0)
             lbl.BackgroundTransparency = 1
@@ -1989,265 +2024,268 @@ local UI = (function()
             lbl.Font = Enum.Font.Gotham
             lbl.TextSize = 11
             lbl.TextXAlignment = Enum.TextXAlignment.Left
+            lbl.Parent = bar
 
-            local btn = Instance.new("TextButton", bar)
-            btn.Size = UDim2.new(1, 0, 1, 0)
-            btn.BackgroundTransparency = 1
-            btn.Text = ""
+            local hit = Instance.new("TextButton")
+            hit.Size = UDim2.new(1, 0, 1, 0)
+            hit.BackgroundTransparency = 1
+            hit.Text = ""
+            hit.Parent = bar
 
-            local dragging = false
-            local function setFromX(x)
-                local rel = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
-                if chName == "R" then state.color = Color3.new(rel, state.color.G, state.color.B)
-                elseif chName == "G" then state.color = Color3.new(state.color.R, rel, state.color.B)
-                else state.color = Color3.new(state.color.R, state.color.G, rel) end
+            local function apply(x)
+                local rel = math.clamp((x - bar.AbsolutePosition.X) / math.max(bar.AbsoluteSize.X, 1), 0, 1)
+                if chName == "R" then color = Color3.new(rel, color.G, color.B)
+                elseif chName == "G" then color = Color3.new(color.R, rel, color.B)
+                else color = Color3.new(color.R, color.G, rel) end
                 refresh()
             end
-            btn.InputBegan:Connect(function(i)
-                if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true; setFromX(i.Position.X) end
+
+            hit.InputBegan:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                    dragName = chName
+                    apply(inp.Position.X)
+                end
             end)
-            UIS.InputChanged:Connect(function(i)
-                if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then setFromX(i.Position.X) end
+            hit.InputChanged:Connect(function(inp)
+                if dragName == chName and inp.UserInputType == Enum.UserInputType.MouseMovement then
+                    apply(inp.Position.X)
+                end
             end)
-            UIS.InputEnded:Connect(function(i)
-                if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+            hit.InputEnded:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 and dragName == chName then
+                    dragName = nil
+                end
             end)
 
-            table.insert(state.channels, { name = chName, fill = fill, label = lbl })
+            rows[i] = { name = chName, fill = fill, lbl = lbl }
         end
 
-        local close = Instance.new("TextButton", popup)
-        close.Size = UDim2.new(1, -20, 0, 22)
-        close.Position = UDim2.new(0, 10, 1, -30)
-        close.BackgroundColor3 = Color3.fromRGB(30,30,30)
-        close.Text = "Close"
-        close.TextColor3 = Color3.fromRGB(200,200,200)
-        close.Font = Enum.Font.Gotham; close.TextSize = 12
-        close.BorderSizePixel = 0
-        Instance.new("UICorner", close).CornerRadius = UDim.new(0, 3)
-        close.MouseButton1Click:Connect(function() popup.Visible = false end)
+        local cl = Instance.new("TextButton")
+        cl.Size = UDim2.new(1, -20, 0, 22)
+        cl.Position = UDim2.new(0, 10, 1, -30)
+        cl.BackgroundColor3 = Color3.fromRGB(30,30,30)
+        cl.Text = "Close"
+        cl.TextColor3 = Color3.fromRGB(200,200,200)
+        cl.Font = Enum.Font.Gotham
+        cl.TextSize = 12
+        cl.BorderSizePixel = 0
+        cl.Parent = popup
+        Instance.new("UICorner", cl).CornerRadius = UDim.new(0, 3)
+        cl.MouseButton1Click:Connect(function() popup.Visible = false end)
 
         return {
-            open = function(posX, posY, color, cb)
-                state.color = color or Color3.fromRGB(255,255,255)
-                state.callback = cb
+            open = function(x, y, c, callback)
+                color = c or Color3.fromRGB(255,255,255)
+                cb = callback
                 refresh()
-                popup.Position = UDim2.new(0, posX, 0, posY)
+                popup.Position = UDim2.new(0, x, 0, y)
                 popup.Visible = true
             end,
         }
     end
 
-    local globalPicker = mkColorPopup()
+    globalPicker = makePicker()
 
-    function api:AddFeature(sectionPage, name, opts)
+    local rowCounter = 0
+    local function nextOrder()
+        rowCounter = rowCounter + 1
+        return rowCounter
+    end
+
+    local function makeFeature(parent, name, opts)
         opts = opts or {}
-        local row = Instance.new("Frame", sectionPage)
+        local row = Instance.new("Frame")
         row.Size = UDim2.new(1, -8, 0, 32)
         row.BackgroundColor3 = Color3.fromRGB(12,12,12)
         row.BorderSizePixel = 0
+        row.LayoutOrder = nextOrder()
+        row.Parent = parent
         Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
 
-        local label = Instance.new("TextLabel", row)
+        local label = Instance.new("TextLabel")
         label.Size = UDim2.new(0.6, 0, 1, 0)
         label.Position = UDim2.new(0, 12, 0, 0)
         label.BackgroundTransparency = 1
-        label.Text = name
+        label.Text = tostring(name)
         label.TextColor3 = Color3.fromRGB(200,200,200)
         label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Font = Enum.Font.Gotham; label.TextSize = 13
+        label.Font = Enum.Font.Gotham
+        label.TextSize = 13
+        label.Parent = row
 
-        local type = opts.type or "toggle"
-        local handle = { sub = nil }
+        local handle = { row = row, _subRows = {}, _state = opts.default and true or false }
+        local kind = opts.type or "toggle"
 
-        if type == "toggle" then
-            local pill = Instance.new("TextButton", row)
+        if kind == "toggle" then
+            local pill = Instance.new("TextButton")
             pill.Size = UDim2.new(0, 40, 0, 20)
             pill.Position = UDim2.new(1, -52, 0.5, -10)
             pill.BackgroundColor3 = opts.default and Color3.fromRGB(86,76,251) or Color3.fromRGB(30,30,30)
-            pill.Text = ""; pill.BorderSizePixel = 0; pill.AutoButtonColor = false
+            pill.Text = ""
+            pill.BorderSizePixel = 0
+            pill.AutoButtonColor = false
+            pill.Parent = row
             Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
-            local knob = Instance.new("Frame", pill)
+
+            local knob = Instance.new("Frame")
             knob.Size = UDim2.new(0, 16, 0, 16)
             knob.Position = opts.default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
             knob.BackgroundColor3 = Color3.fromRGB(200,200,200)
             knob.BorderSizePixel = 0
+            knob.Parent = pill
             Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-            local state = opts.default or false
 
-            local function setState(v, silent)
-                state = v
+            local function applyState(v, fire)
+                handle._state = v
                 pill.BackgroundColor3 = v and Color3.fromRGB(86,76,251) or Color3.fromRGB(30,30,30)
                 knob.Position = v and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-                if handle.sub then handle.sub.Visible = v end
-                if not silent and opts.callback then pcall(opts.callback, v) end
+                for _, sr in ipairs(handle._subRows) do sr.Visible = v end
+                if fire and opts.callback then pcall(opts.callback, v) end
             end
-            handle.Set = function(v) setState(v, true) end
-            pill.MouseButton1Click:Connect(function() setState(not state) end)
 
-        elseif type == "button" then
-            local btn = Instance.new("TextButton", row)
-            btn.Size = UDim2.new(0, 60, 0, 22)
-            btn.Position = UDim2.new(1, -72, 0.5, -11)
-            btn.BackgroundColor3 = Color3.fromRGB(30,30,30)
-            btn.Text = "Run"; btn.TextColor3 = Color3.fromRGB(200,200,200)
-            btn.Font = Enum.Font.Gotham; btn.TextSize = 12
-            btn.BorderSizePixel = 0; btn.AutoButtonColor = false
-            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
-            btn.MouseButton1Click:Connect(function() if opts.callback then pcall(opts.callback) end end)
-
-        elseif type == "slider" then
-            local box = Instance.new("TextBox", row)
-            box.Size = UDim2.new(0, 90, 0, 22)
-            box.Position = UDim2.new(1, -102, 0.5, -11)
-            box.BackgroundColor3 = Color3.fromRGB(25,25,25)
-            box.Text = tostring(opts.default or opts.min or 0)
-            box.TextColor3 = Color3.fromRGB(180,180,180)
-            box.Font = Enum.Font.Gotham; box.TextSize = 11
-            box.ClearTextOnFocus = false
-            box.BorderSizePixel = 0
-            Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
-            box.FocusLost:Connect(function()
-                local n = tonumber(box.Text)
-                if n then
-                    n = math.clamp(n, opts.min or -math.huge, opts.max or math.huge)
-                    box.Text = tostring(n)
-                    if opts.callback then pcall(opts.callback, n) end
-                end
-            end)
-
-        elseif type == "color" then
-            local swatch = Instance.new("TextButton", row)
-            swatch.Size = UDim2.new(0, 40, 0, 20)
-            swatch.Position = UDim2.new(1, -52, 0.5, -10)
-            swatch.BackgroundColor3 = opts.default or Color3.fromRGB(255,255,255)
-            swatch.Text = ""; swatch.BorderSizePixel = 0; swatch.AutoButtonColor = false
-            Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 4)
-            local st2 = Instance.new("UIStroke", swatch)
-            st2.Color = Color3.fromRGB(80,80,80); st2.Thickness = 1
-            swatch.MouseButton1Click:Connect(function()
-                globalPicker.open(
-                    swatch.AbsolutePosition.X - 80,
-                    swatch.AbsolutePosition.Y + 26,
-                    swatch.BackgroundColor3,
-                    function(c)
-                        swatch.BackgroundColor3 = c
-                        if opts.callback then pcall(opts.callback, c) end
-                    end
-                )
-            end)
-        end
-
-        -- sub-features container
-        if opts.sub and type == "toggle" then
-            local sub = Instance.new("Frame", sectionPage)
-            sub.Size = UDim2.new(1, -8, 0, 0)
-            sub.BackgroundColor3 = Color3.fromRGB(8,8,8)
-            sub.BorderSizePixel = 0
-            sub.Visible = false
-            sub.AutomaticSize = Enum.AutomaticSize.Y
-            Instance.new("UICorner", sub).CornerRadius = UDim.new(0, 5)
-            local subPad = Instance.new("UIPadding", sub)
-            subPad.PaddingTop = UDim.new(0, 6)
-            subPad.PaddingBottom = UDim.new(0, 6)
-            subPad.PaddingLeft = UDim.new(0, 24)
-            subPad.PaddingRight = UDim.new(0, 12)
-            local subLayout = Instance.new("UIListLayout", sub)
-            subLayout.Padding = UDim.new(0, 4); subLayout.SortOrder = Enum.SortOrder.LayoutOrder
-            handle.sub = sub
+            pill.MouseButton1Click:Connect(function() applyState(not handle._state, true) end)
+            handle.Set = function(v) applyState(v, false) end
 
             handle.AddSub = function(spec)
-                local st = spec.type or "toggle"
-                local srow = Instance.new("Frame", sub)
-                srow.Size = UDim2.new(1, 0, 0, 26)
-                srow.BackgroundTransparency = 1
+                spec = spec or {}
+                local srow = Instance.new("Frame")
+                srow.Size = UDim2.new(1, -8, 0, 26)
+                srow.BackgroundColor3 = Color3.fromRGB(8,8,8)
+                srow.BorderSizePixel = 0
+                srow.LayoutOrder = nextOrder()
+                srow.Visible = handle._state
+                srow.Parent = parent
+                Instance.new("UICorner", srow).CornerRadius = UDim.new(0, 5)
+                table.insert(handle._subRows, srow)
 
-                local slabel = Instance.new("TextLabel", srow)
-                slabel.Size = UDim2.new(0.6, 0, 1, 0)
-                slabel.BackgroundTransparency = 1
-                slabel.Text = spec.name
-                slabel.TextColor3 = Color3.fromRGB(180,180,180)
-                slabel.TextXAlignment = Enum.TextXAlignment.Left
-                slabel.Font = Enum.Font.Gotham; slabel.TextSize = 12
+                local pad = Instance.new("UIPadding")
+                pad.PaddingLeft = UDim.new(0, 24)
+                pad.Parent = srow
+
+                local slbl = Instance.new("TextLabel")
+                slbl.Size = UDim2.new(0.6, 0, 1, 0)
+                slbl.BackgroundTransparency = 1
+                slbl.Text = tostring(spec.name or "")
+                slbl.TextColor3 = Color3.fromRGB(180,180,180)
+                slbl.TextXAlignment = Enum.TextXAlignment.Left
+                slbl.Font = Enum.Font.Gotham
+                slbl.TextSize = 12
+                slbl.Parent = srow
+
+                local st = spec.type or "toggle"
 
                 if st == "toggle" then
-                    local pill = Instance.new("TextButton", srow)
-                    pill.Size = UDim2.new(0, 32, 0, 16)
-                    pill.Position = UDim2.new(1, -32, 0.5, -8)
-                    pill.BackgroundColor3 = spec.default and Color3.fromRGB(86,76,251) or Color3.fromRGB(30,30,30)
-                    pill.Text = ""; pill.BorderSizePixel = 0; pill.AutoButtonColor = false
-                    Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
-                    local knob = Instance.new("Frame", pill)
-                    knob.Size = UDim2.new(0, 12, 0, 12)
-                    knob.Position = spec.default and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
-                    knob.BackgroundColor3 = Color3.fromRGB(200,200,200)
-                    knob.BorderSizePixel = 0
-                    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-                    local state = spec.default or false
-                    pill.MouseButton1Click:Connect(function()
-                        state = not state
-                        pill.BackgroundColor3 = state and Color3.fromRGB(86,76,251) or Color3.fromRGB(30,30,30)
-                        knob.Position = state and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
-                        if spec.callback then pcall(spec.callback, state) end
+                    local p2 = Instance.new("TextButton")
+                    p2.Size = UDim2.new(0, 32, 0, 16)
+                    p2.Position = UDim2.new(1, -44, 0.5, -8)
+                    p2.BackgroundColor3 = spec.default and Color3.fromRGB(86,76,251) or Color3.fromRGB(30,30,30)
+                    p2.Text = ""
+                    p2.BorderSizePixel = 0
+                    p2.AutoButtonColor = false
+                    p2.Parent = srow
+                    Instance.new("UICorner", p2).CornerRadius = UDim.new(1, 0)
+                    local k2 = Instance.new("Frame")
+                    k2.Size = UDim2.new(0, 12, 0, 12)
+                    k2.Position = spec.default and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
+                    k2.BackgroundColor3 = Color3.fromRGB(200,200,200)
+                    k2.BorderSizePixel = 0
+                    k2.Parent = p2
+                    Instance.new("UICorner", k2).CornerRadius = UDim.new(1, 0)
+                    local s2 = spec.default and true or false
+                    p2.MouseButton1Click:Connect(function()
+                        s2 = not s2
+                        p2.BackgroundColor3 = s2 and Color3.fromRGB(86,76,251) or Color3.fromRGB(30,30,30)
+                        k2.Position = s2 and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
+                        if spec.callback then pcall(spec.callback, s2) end
                     end)
+
                 elseif st == "slider" then
-                    local box = Instance.new("TextBox", srow)
+                    local box = Instance.new("TextBox")
                     box.Size = UDim2.new(0, 80, 0, 20)
-                    box.Position = UDim2.new(1, -80, 0.5, -10)
+                    box.Position = UDim2.new(1, -92, 0.5, -10)
                     box.BackgroundColor3 = Color3.fromRGB(25,25,25)
                     box.Text = tostring(spec.default or spec.min or 0)
                     box.TextColor3 = Color3.fromRGB(180,180,180)
-                    box.Font = Enum.Font.Gotham; box.TextSize = 11
-                    box.ClearTextOnFocus = false; box.BorderSizePixel = 0
+                    box.Font = Enum.Font.Gotham
+                    box.TextSize = 11
+                    box.ClearTextOnFocus = false
+                    box.BorderSizePixel = 0
+                    box.Parent = srow
                     Instance.new("UICorner", box).CornerRadius = UDim.new(0, 3)
                     box.FocusLost:Connect(function()
                         local n = tonumber(box.Text)
                         if n then
-                            n = math.clamp(n, spec.min or -math.huge, spec.max or math.huge)
+                            n = math.clamp(n, spec.min or -1e9, spec.max or 1e9)
                             box.Text = tostring(n)
                             if spec.callback then pcall(spec.callback, n) end
+                        else
+                            box.Text = tostring(spec.default or spec.min or 0)
                         end
                     end)
+
                 elseif st == "button" then
-                    local btn = Instance.new("TextButton", srow)
-                    btn.Size = UDim2.new(0, 50, 0, 20)
-                    btn.Position = UDim2.new(1, -50, 0.5, -10)
-                    btn.BackgroundColor3 = Color3.fromRGB(30,30,30)
-                    btn.Text = "Run"; btn.TextColor3 = Color3.fromRGB(200,200,200)
-                    btn.Font = Enum.Font.Gotham; btn.TextSize = 11
-                    btn.BorderSizePixel = 0
-                    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 3)
-                    btn.MouseButton1Click:Connect(function()
+                    local b2 = Instance.new("TextButton")
+                    b2.Size = UDim2.new(0, 60, 0, 20)
+                    b2.Position = UDim2.new(1, -72, 0.5, -10)
+                    b2.BackgroundColor3 = Color3.fromRGB(30,30,30)
+                    b2.Text = "Run"
+                    b2.TextColor3 = Color3.fromRGB(200,200,200)
+                    b2.Font = Enum.Font.Gotham
+                    b2.TextSize = 11
+                    b2.BorderSizePixel = 0
+                    b2.Parent = srow
+                    Instance.new("UICorner", b2).CornerRadius = UDim.new(0, 3)
+                    b2.MouseButton1Click:Connect(function()
                         if spec.callback then pcall(spec.callback) end
                     end)
+
                 elseif st == "color" then
-                    local swatch = Instance.new("TextButton", srow)
-                    swatch.Size = UDim2.new(0, 32, 0, 16)
-                    swatch.Position = UDim2.new(1, -32, 0.5, -8)
-                    swatch.BackgroundColor3 = spec.default or Color3.fromRGB(255,255,255)
-                    swatch.Text = ""; swatch.BorderSizePixel = 0; swatch.AutoButtonColor = false
-                    Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 3)
-                    local st2 = Instance.new("UIStroke", swatch)
-                    st2.Color = Color3.fromRGB(80,80,80); st2.Thickness = 1
-                    swatch.MouseButton1Click:Connect(function()
+                    local sw = Instance.new("TextButton")
+                    sw.Size = UDim2.new(0, 40, 0, 18)
+                    sw.Position = UDim2.new(1, -52, 0.5, -9)
+                    sw.BackgroundColor3 = spec.default or Color3.fromRGB(255,255,255)
+                    sw.Text = ""
+                    sw.BorderSizePixel = 0
+                    sw.AutoButtonColor = false
+                    sw.Parent = srow
+                    Instance.new("UICorner", sw).CornerRadius = UDim.new(0, 3)
+                    local sst = Instance.new("UIStroke", sw)
+                    sst.Color = Color3.fromRGB(80,80,80)
+                    sst.Thickness = 1
+                    sw.MouseButton1Click:Connect(function()
                         globalPicker.open(
-                            swatch.AbsolutePosition.X - 80,
-                            swatch.AbsolutePosition.Y + 22,
-                            swatch.BackgroundColor3,
+                            sw.AbsolutePosition.X - 80,
+                            sw.AbsolutePosition.Y + 22,
+                            sw.BackgroundColor3,
                             function(c)
-                                swatch.BackgroundColor3 = c
+                                sw.BackgroundColor3 = c
                                 if spec.callback then pcall(spec.callback, c) end
                             end
                         )
                     end)
                 end
             end
+
+        elseif kind == "button" then
+            local b3 = Instance.new("TextButton")
+            b3.Size = UDim2.new(0, 60, 0, 22)
+            b3.Position = UDim2.new(1, -72, 0.5, -11)
+            b3.BackgroundColor3 = Color3.fromRGB(30,30,30)
+            b3.Text = "Run"
+            b3.TextColor3 = Color3.fromRGB(200,200,200)
+            b3.Font = Enum.Font.Gotham
+            b3.TextSize = 12
+            b3.BorderSizePixel = 0
+            b3.Parent = row
+            Instance.new("UICorner", b3).CornerRadius = UDim.new(0, 4)
+            b3.MouseButton1Click:Connect(function()
+                if opts.callback then pcall(opts.callback) end
+            end)
         end
 
         return handle
     end
 
-    -- right shift hide
     UIS.InputBegan:Connect(function(i, gp)
         if gp then return end
         if i.KeyCode == Enum.KeyCode.RightShift then
@@ -2262,7 +2300,11 @@ local UI = (function()
         end
     end)
 
-    return api
+    return {
+        gui = gui,
+        AddSection = makeSection,
+        AddFeature = makeFeature,
+    }
 end)()
 
 local WIN = UI
@@ -2270,7 +2312,6 @@ local WIN = UI
 -- ============================================================
 -- [MENU BUILD]
 -- ============================================================
--- COMBAT
 local combatPage = WIN:AddSection("Combat")
 local aimF = WIN:AddFeature(combatPage, "Silent Aim", { type="toggle", default=true, sub=true,
     callback=function(v) SA.enabled=v; if v then pcall(install_hooks) end end })
@@ -2290,7 +2331,7 @@ aimF.AddSub({ name="Lateral Bias", type="slider", min=1, max=2.5, default=1.6, c
 aimF.AddSub({ name="Switch Blend", type="slider", min=0, max=1, default=0.35, callback=function(v) SA.blend=v end })
 aimF.AddSub({ name="Aim Color", type="color", default=Color3.fromRGB(0,220,255), callback=function(c) FC.tracer=c end })
 
-local knF = WIN:AddFeature(combatPage, "Knife Silent", { type="toggle", default=false,
+WIN:AddFeature(combatPage, "Knife Silent", { type="toggle", default=false,
     callback=function(v) KS.enabled=v end })
 
 local kaF = WIN:AddFeature(combatPage, "Kill Aura", { type="toggle", default=false, sub=true,
@@ -2298,7 +2339,7 @@ local kaF = WIN:AddFeature(combatPage, "Kill Aura", { type="toggle", default=fal
 kaF.AddSub({ name="Distance", type="slider", min=5, max=150, default=30, callback=function(v) KA.dist=v end })
 kaF.AddSub({ name="Kill All", type="button", callback=function() task.spawn(killAll) end })
 
-local gunF = WIN:AddFeature(combatPage, "Auto Gun", { type="toggle", default=false,
+WIN:AddFeature(combatPage, "Auto Gun", { type="toggle", default=false,
     callback=function(v)
         autograb_on = v
         if v then
@@ -2307,7 +2348,6 @@ local gunF = WIN:AddFeature(combatPage, "Auto Gun", { type="toggle", default=fal
         else grab_desc_stop() end
     end })
 
--- WALL CHECK section
 local wcF = WIN:AddFeature(combatPage, "Wall Check", { type="toggle", default=false, sub=true,
     callback=function(v) WC.on=v; if v then wc_start() else wc_clear() end end })
 wcF.AddSub({ name="Blocked Color", type="color", default=Color3.fromRGB(255,60,60),
@@ -2320,7 +2360,6 @@ wcF.AddSub({ name="Through Walls", type="toggle", default=true, callback=functio
     WC.depth = v and "always" or "occluded"
 end })
 
--- MOVE
 local movePage = WIN:AddSection("Move")
 local spF = WIN:AddFeature(movePage, "Walkspeed", { type="toggle", default=false, sub=true,
     callback=function(v) MOVE.speedOn=v; applySpeed() end })
@@ -2376,7 +2415,6 @@ WIN:AddFeature(movePage, "TP to Lobby", { type="button", callback=function()
     end
 end })
 
--- TROLL
 local trollPage = WIN:AddSection("Troll")
 local flingF = WIN:AddFeature(trollPage, "Fling", { type="toggle", default=false, sub=true,
     callback=function(v) FLING.active=v end })
@@ -2426,7 +2464,6 @@ WIN:AddFeature(trollPage, "Dizzy", { type="button", callback=function()
     task.delay(3, function() MOVE.spin=false; pcall(stopSpin) end)
 end })
 
--- VISUALS
 local vizPage = WIN:AddSection("Visuals")
 local function mkToggleFeature(name, flagKey, mkFn, clFn)
     return WIN:AddFeature(vizPage, name, { type="toggle", default=false, sub=true,
@@ -2434,41 +2471,41 @@ local function mkToggleFeature(name, flagKey, mkFn, clFn)
 end
 
 local trailF = mkToggleFeature("Neon Trail", "trail", mkTrail, clTrail)
-trailF.AddSub({ name="Color", type="color", default=FC.trail, callback=function(c) FC.trail=c; rebuildEffect("trail") end })
+trailF.AddSub({ name="Color", type="color", default=FC.trail, callback=function(c) FC.trail=c; pcall(clTrail); pcall(mkTrail) end })
 
 local hatF = mkToggleFeature("China Hat", "hat", mkHat, clHat)
-hatF.AddSub({ name="Color", type="color", default=FC.hat, callback=function(c) FC.hat=c; rebuildEffect("hat") end })
+hatF.AddSub({ name="Color", type="color", default=FC.hat, callback=function(c) FC.hat=c; pcall(clHat); pcall(mkHat) end })
 
 local glowF = mkToggleFeature("Body Glow", "glow", mkGlow, clGlow)
-glowF.AddSub({ name="Color", type="color", default=FC.glow, callback=function(c) FC.glow=c; rebuildEffect("glow") end })
+glowF.AddSub({ name="Color", type="color", default=FC.glow, callback=function(c) FC.glow=c; pcall(clGlow); pcall(mkGlow) end })
 
 mkToggleFeature("Rainbow Body", "rainbow", mkRB, clRB)
 
 local auraF = mkToggleFeature("Aura Particles", "parts", mkParts, clParts)
-auraF.AddSub({ name="Color", type="color", default=FC.parts, callback=function(c) FC.parts=c; rebuildEffect("parts") end })
+auraF.AddSub({ name="Color", type="color", default=FC.parts, callback=function(c) FC.parts=c; pcall(clParts); pcall(mkParts) end })
 
 local skyF = mkToggleFeature("Sky Dust", "skyDust", mkSky, clSky)
-skyF.AddSub({ name="Color", type="color", default=FC.skyDust, callback=function(c) FC.skyDust=c; rebuildEffect("skyDust") end })
-skyF.AddSub({ name="Hearts", type="toggle", default=false, callback=function(v) skyHeart=v; if fl.skyDust then clSky(); mkSky() end end })
+skyF.AddSub({ name="Color", type="color", default=FC.skyDust, callback=function(c) FC.skyDust=c; pcall(clSky); pcall(mkSky) end })
+skyF.AddSub({ name="Hearts", type="toggle", default=false, callback=function(v) skyHeart=v; if fl.skyDust then pcall(clSky); pcall(mkSky) end end })
 
 local snowF = mkToggleFeature("Snow Aura", "snow", mkSnow, clSnow)
-snowF.AddSub({ name="Color", type="color", default=FC.snow, callback=function(c) FC.snow=c; rebuildEffect("snow") end })
+snowF.AddSub({ name="Color", type="color", default=FC.snow, callback=function(c) FC.snow=c; pcall(clSnow); pcall(mkSnow) end })
 
 local boF = mkToggleFeature("Bounce Particles", "bounce", mkBo, clBo)
-boF.AddSub({ name="Color", type="color", default=FC.bounce, callback=function(c) FC.bounce=c; rebuildEffect("bounce") end })
-boF.AddSub({ name="Hearts", type="toggle", default=false, callback=function(v) boHeart=v; if fl.bounce then clBo(); mkBo() end end })
+boF.AddSub({ name="Color", type="color", default=FC.bounce, callback=function(c) FC.bounce=c; pcall(clBo); pcall(mkBo) end })
+boF.AddSub({ name="Hearts", type="toggle", default=false, callback=function(v) boHeart=v; if fl.bounce then pcall(clBo); pcall(mkBo) end end })
 
 local lightF = mkToggleFeature("Lightning Aura", "lightning", mkLight, clLight)
-lightF.AddSub({ name="Color", type="color", default=FC.lightning, callback=function(c) FC.lightning=c; rebuildEffect("lightning") end })
+lightF.AddSub({ name="Color", type="color", default=FC.lightning, callback=function(c) FC.lightning=c; pcall(clLight); pcall(mkLight) end })
 
 local orbF = mkToggleFeature("Orb Aura", "orbAura", mkOrb, clOrb)
-orbF.AddSub({ name="Color", type="color", default=FC.orbAura, callback=function(c) FC.orbAura=c; rebuildEffect("orbAura") end })
+orbF.AddSub({ name="Color", type="color", default=FC.orbAura, callback=function(c) FC.orbAura=c; pcall(clOrb); pcall(mkOrb) end })
 
 local ghostF = mkToggleFeature("Ghost Trail", "ghost", mkGhost, clGhost)
-ghostF.AddSub({ name="Color", type="color", default=FC.ghost, callback=function(c) FC.ghost=c; rebuildEffect("ghost") end })
+ghostF.AddSub({ name="Color", type="color", default=FC.ghost, callback=function(c) FC.ghost=c; pcall(clGhost); pcall(mkGhost) end })
 
 local footF = mkToggleFeature("Footsteps", "foot", mkFoot, clFoot)
-footF.AddSub({ name="Color", type="color", default=FC.foot, callback=function(c) FC.foot=c; rebuildEffect("foot") end })
+footF.AddSub({ name="Color", type="color", default=FC.foot, callback=function(c) FC.foot=c end })
 
 local traceF = WIN:AddFeature(vizPage, "Bullet Tracer", { type="toggle", default=false, sub=true,
     callback=function(v) TRACE.on=v; fl.tracer=v
@@ -2476,21 +2513,19 @@ local traceF = WIN:AddFeature(vizPage, "Bullet Tracer", { type="toggle", default
     end })
 traceF.AddSub({ name="Color", type="color", default=FC.tracer, callback=function(c) FC.tracer=c end })
 
--- JUMP
 local jumpPage = WIN:AddSection("Jump")
 local jumpF = WIN:AddFeature(jumpPage, "Jump Circles", { type="toggle", default=false, sub=true,
     callback=function(v) fl.jump=v; if v then mkJump() else clJump() end end })
-jumpF.AddSub({ name="Color", type="color", default=FC.jump, callback=function(c) FC.jump=c; rebuildEffect("jump") end })
+jumpF.AddSub({ name="Color", type="color", default=FC.jump, callback=function(c) FC.jump=c end })
 jumpF.AddSub({ name="Classic", type="button", callback=function() jStyle="Classic" end })
 jumpF.AddSub({ name="Double", type="button", callback=function() jStyle="Double" end })
 jumpF.AddSub({ name="Ripple", type="button", callback=function() jStyle="Ripple" end })
 jumpF.AddSub({ name="Particles", type="button", callback=function() jStyle="Particles" end })
 
--- WORLD
 local worldPage = WIN:AddSection("World")
 local atmoF = WIN:AddFeature(worldPage, "Cyberpunk Atmo", { type="toggle", default=false, sub=true,
     callback=function(v) fl.atmo=v; if v then mkAtmo() else clAtmo() end end })
-atmoF.AddSub({ name="Color", type="color", default=FC.atmo, callback=function(c) FC.atmo=c; rebuildEffect("atmo") end })
+atmoF.AddSub({ name="Color", type="color", default=FC.atmo, callback=function(c) FC.atmo=c; pcall(clAtmo); pcall(mkAtmo) end })
 
 WIN:AddFeature(worldPage, "FullBright", { type="toggle", default=false, callback=function(v) fl.fb=v; if v then mkFB() else clFB() end end })
 WIN:AddFeature(worldPage, "Skybox", { type="toggle", default=false, callback=function(v) fl.sky=v; if v then mkSkybox() else clSkybox() end end })
@@ -2501,7 +2536,6 @@ WIN:AddFeature(worldPage, "Night", { type="button", callback=function() applyTim
 WIN:AddFeature(worldPage, "Cyber", { type="button", callback=function() applyTime("Cyber") end })
 WIN:AddFeature(worldPage, "Fog", { type="toggle", default=false, callback=function(v) fl._fog=v; toggleFog(v) end })
 
--- ESP
 local espPage = WIN:AddSection("ESP")
 WIN:AddFeature(espPage, "Role ESP", { type="toggle", default=false, callback=function(v) fl.esp=v; if v then mkESP() else clESP() end end })
 WIN:AddFeature(espPage, "Ghost ESP", { type="toggle", default=true, callback=function(v) fl.espGhost=v end })
@@ -2510,12 +2544,11 @@ WIN:AddFeature(espPage, "Role Tag", { type="toggle", default=false, callback=fun
     if not v then for pl in pairs(espTxtTags) do detachRoleTag(pl) end end
 end })
 
--- EXTRA
 local extraPage = WIN:AddSection("Extra")
 WIN:AddFeature(extraPage, "Kill Lightning", { type="toggle", default=true, callback=function(v) killOn=v end })
 local btF = WIN:AddFeature(extraPage, "Backtrack", { type="toggle", default=false, sub=true,
     callback=function(v) BT.on=v; if v then task.spawn(bt_build) end end })
-btF.AddSub({ name="Color", type="color", default=FC.bt, callback=function(c) FC.bt=c; rebuildEffect("bt") end })
+btF.AddSub({ name="Color", type="color", default=FC.bt, callback=function(c) FC.bt=c end })
 WIN:AddFeature(extraPage, "Anti AFK", { type="toggle", default=false, callback=function(v) fl.noafk=v end })
 WIN:AddFeature(extraPage, "Clear Particles", { type="button", callback=function()
     for _,p in ipairs(workspace:GetDescendants()) do
@@ -2523,7 +2556,6 @@ WIN:AddFeature(extraPage, "Clear Particles", { type="button", callback=function(
     end
 end })
 
--- MODEL
 local modelPage = WIN:AddSection("Model")
 WIN:AddFeature(modelPage, "Headless", { type="toggle", default=false, callback=function(v)
     fl.headless=v; pcall(applySkinAll)
@@ -2660,9 +2692,9 @@ ADDON.unload = function()
         end
         WSH.hooked = nil; WSH.m = nil
     end
-    safe_destroy(UI.gui)
+    if UI.gui then safe_destroy(UI.gui) end
     getgenv().UN_ADDON = nil
     print("[addon] unloaded")
 end
 
-print("[StarWare] loaded В· right shift toggle")
+print("[StarWare] loaded · right shift toggle")
