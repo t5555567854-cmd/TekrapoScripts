@@ -2,7 +2,8 @@
 --!nolint
 -- ============================================================
 -- StarWare v3 · Orion UI (Qanuir fork)
--- все цвета — через общий color picker, пресеты убраны
+-- aim: FOV · angle-bias · lateral-bias · p90-rtt · двухпроходный лид · weighted head
+-- fling: orbit · slam · spin · anchor-break
 -- ============================================================
 if getgenv().UN_ADDON and getgenv().UN_ADDON.loaded then
     pcall(function() getgenv().UN_ADDON.unload() end)
@@ -26,7 +27,7 @@ end
 local Cam        = workspace.CurrentCamera
 
 -- ============================================================
--- [UI] Orion loader (Qanuir fork — актуальное зеркало)
+-- [UI] Orion loader (Qanuir fork)
 -- ============================================================
 local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/Qanuir/orion-ui/refs/heads/main/source.lua'))()
 
@@ -41,7 +42,7 @@ local function MakeNotif(name, content, dur)
 end
 
 -- ============================================================
--- [HELPERS] безопасные примитивы
+-- [HELPERS]
 -- ============================================================
 local function safe_destroy(inst)
     if inst and typeof(inst)=="Instance" and inst.Parent then
@@ -51,17 +52,18 @@ end
 local function safe_disconnect(conn)
     if conn then pcall(function() conn:Disconnect() end) end
 end
-local function safe_set(inst, prop, value)
-    if inst and typeof(inst)=="Instance" then
-        pcall(function() inst[prop] = value end)
-    end
-end
 
 -- ============================================================
--- [STATE] глобальное состояние читается UI-колбэками
+-- [STATE]
 -- ============================================================
-local SA = { enabled=true, part="Torso", quiet=true, wb=true, wbTemp=nil, antiJump=true }
+local SA = { enabled=true, part="Torso", quiet=true, wb=true, wbTemp=nil, antiJump=true,
+    autoPred=true, bestMoment=true, jumpRadar=25, confFloor=0.5,
+    fov=180, angleBias=0.4, lateralBias=1.6, blend=0.35 }
+
 local SA_hist = {}
+local SA_phase = {}
+local SA_lock = { lastChar=nil, blendT=0, lastPos=nil }
+
 local KS = { enabled=false }
 local KA = { on=false, dist=30, last=0 }
 local TRACE = { on=false, conn=nil }
@@ -79,6 +81,14 @@ local moveConns = { infJump=nil, noclip=nil, nc={} }
 local flyConn, spinConn
 local antiJumpConn = nil
 
+-- fling config
+local FLING = {
+    mode = "orbit",         -- orbit | slam | spin | anchor
+    force = 9e8,
+    duration = 2.2,
+    active = false,
+}
+
 local TROLL = { flinging=false }
 
 local fl = { trail=false, parts=false, hat=false, foot=false, rainbow=false,
@@ -87,10 +97,9 @@ local fl = { trail=false, parts=false, hat=false, foot=false, rainbow=false,
     snow=false, ghost=false, skyDust=false, bloom=false, fb=false,
     sky=false, _fog=false, antifling=false, headless=false, noafk=false, roleTag=false }
 
--- FC: все цвета эффектов и бэктрека. Ключи совпадают с activeViz picker'а
 local FC = {}
 (function() for k in pairs(fl) do FC[k]=Color3.fromRGB(0,220,255) end end)()
-FC.bt = Color3.fromRGB(170,100,255)   -- backtrack ghost — стартовый фиолетовый
+FC.bt = Color3.fromRGB(170,100,255)
 
 local SZ = { trail=1.5, parts=1.6, hat=1.4, foot=2.2, jump=4, bounce=0.5,
     orbAura=2.5, lightning=0.7, snow=1.2, glow=0.3, tracer=0.15,
@@ -114,10 +123,9 @@ local startInfJump, stopInfJump, startNoclip, stopNoclip
 local startFly, stopFly, startSpin, stopSpin, moveReset
 local applyTime, toggleFog, ka_tick, hookKills
 local bt_destroy, bt_build, bt_update, bt_conn
-local activeViz = "trail"
 
 -- ============================================================
--- [ROLES] кэш ролей и чтение из CurrentRoundClient
+-- [ROLES]
 -- ============================================================
 local roleCacheMod=nil
 local roleCache={}
@@ -172,53 +180,141 @@ local function HEAD() local c=LP.Character; return c and c:FindFirstChild("Head"
 local function LT(c) return Color3.new(math.min(1,c.R*1.4),math.min(1,c.G*1.4),math.min(1,c.B*1.4)) end
 
 -- ============================================================
--- [TARGETING] лок цели с гистерезисом
+-- [TARGETING]
 -- ============================================================
 local rp=RaycastParams.new()
 rp.FilterType=Enum.RaycastFilterType.Exclude
 local EC={ rtt=0, jitter=0, seen=false }
+local EC_samples = {}
+
+local function push_rtt(v)
+    table.insert(EC_samples, v)
+    if #EC_samples > 12 then table.remove(EC_samples, 1) end
+end
+local function rtt_p90()
+    if #EC_samples == 0 then return EC.rtt end
+    local s = table.clone(EC_samples)
+    table.sort(s)
+    return s[math.max(1, math.floor(#s * 0.9))]
+end
+
+local function SA_rayBlocked(a, b, ignore)
+    local list = { workspace.CurrentCamera }
+    for _, x in ipairs(ignore or {}) do table.insert(list, x) end
+    local p = RaycastParams.new()
+    p.FilterType = Enum.RaycastFilterType.Exclude
+    for _ = 1, 8 do
+        p.FilterDescendantsInstances = list
+        local hit = workspace:Raycast(a, b - a, p)
+        if not hit then return false end
+        local i = hit.Instance
+        if i.Transparency >= 0.9 or not i.CanCollide then
+            table.insert(list, i)
+        else
+            return true
+        end
+    end
+    return true
+end
+
+local SA_BODY = { "UpperTorso", "Torso", "LowerTorso", "Head", "HumanoidRootPart",
+    "RightUpperArm", "LeftUpperArm", "Right Arm", "Left Arm" }
+
+local BODY_WEIGHT = {
+    Head=3.0, UpperTorso=1.5, Torso=1.5, LowerTorso=1.0,
+    HumanoidRootPart=0.5, RightUpperArm=0.6, LeftUpperArm=0.6,
+    ["Right Arm"]=0.6, ["Left Arm"]=0.6,
+}
+
+local function SA_anyVisible(targetChar, origin)
+    for _, n in ipairs(SA_BODY) do
+        local pt = targetChar:FindFirstChild(n)
+        if pt and pt:IsA("BasePart") then
+            if not SA_rayBlocked(origin, pt.Position, { targetChar }) then return true end
+        end
+    end
+    return false
+end
+
+local function SA_targetScore(p, camPos, camLook)
+    local c = p.Character
+    if not c then return math.huge end
+    local head = c:FindFirstChild("Head")
+    local hrp  = c:FindFirstChild("HumanoidRootPart")
+    local h    = c:FindFirstChildOfClass("Humanoid")
+    if not head or not hrp or not h then return math.huge end
+
+    local toHead = head.Position - camPos
+    local dist = toHead.Magnitude
+    if dist < 0.5 then dist = 0.5 end
+
+    local angle = math.deg(math.acos(math.clamp(camLook:Dot(toHead.Unit), -1, 1)))
+    if angle > SA.fov * 0.5 then return math.huge end
+
+    local jumpMul = 1
+    if SA.antiJump and h.FloorMaterial == Enum.Material.Air then
+        local vy = hrp.AssemblyLinearVelocity.Y
+        if vy > 8 then jumpMul = 1.6
+        elseif vy > 0 then jumpMul = 1.1
+        elseif vy > -25 then jumpMul = 0.85
+        else jumpMul = 0.6 end
+    end
+
+    local occluded = SA_rayBlocked(camPos, head.Position, { c })
+    local anglePenalty = 1 + (angle / math.max(SA.fov, 1)) * SA.angleBias * 4
+    local score = dist * anglePenalty * jumpMul
+    if occluded then score = score * 1.4 end
+
+    return score
+end
 
 local function refresh_target()
     refreshRoleCache()
     if not Cam then Cam = workspace.CurrentCamera end
     if not Cam then return end
 
-    local keepCurrent = false
-    local curDist = math.huge
+    local camPos  = Cam.CFrame.Position
+    local camLook = Cam.CFrame.LookVector
+
     if target_p and target_p.Character then
         local h = target_p.Character:FindFirstChild("Humanoid")
-        local hd = target_p.Character:FindFirstChild("Head")
-        if h and h.Health > 0 and hd and cachedRole(target_p) == "m" then
-            keepCurrent = true
-            curDist = (hd.Position - Cam.CFrame.Position).Magnitude
-            if SA.antiJump and h.FloorMaterial == Enum.Material.Air then curDist = curDist * 0.5 end
-        end
-    end
-
-    local best,bd=nil,math.huge
-    for _,p in ipairs(Players:GetPlayers()) do
-        if p~=LP and alive(p) and cachedRole(p)=="m" then
-            local h=p.Character and p.Character:FindFirstChild("Head")
-            if h then
-                local d=(h.Position-Cam.CFrame.Position).Magnitude
-                if SA.antiJump then
-                    local hv=p.Character:FindFirstChildOfClass("Humanoid")
-                    if hv and hv.FloorMaterial==Enum.Material.Air then d = d * 0.5 end
+        if h and h.Health > 0 and cachedRole(target_p) == "m" then
+            local s = SA_targetScore(target_p, camPos, camLook)
+            if s < math.huge then
+                local best, bs = nil, s / 1.4
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= LP and p ~= target_p and alive(p) and cachedRole(p) == "m" then
+                        local ps = SA_targetScore(p, camPos, camLook)
+                        if ps < bs then bs = ps; best = p end
+                    end
                 end
-                if d<bd then bd=d; best=p end
+                if not best then return end
             end
         end
     end
 
-    if keepCurrent and best ~= target_p and curDist < bd * 1.4 then return end
+    local best, bs = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP and alive(p) and cachedRole(p) == "m" then
+            local s = SA_targetScore(p, camPos, camLook)
+            if s < bs then bs = s; best = p end
+        end
+    end
 
-    if best~=target_p then target_p=best; target_char,target_part,target_hum=nil,nil,nil end
+    if best ~= target_p then
+        if SA_lock.lastChar ~= best then
+            SA_lock.lastChar = best
+            SA_lock.blendT = 1.0
+        end
+        target_p = best; target_char, target_part, target_hum = nil, nil, nil
+    end
     if not best then return end
-    local c=best.Character
-    if c~=target_char then target_char=c; target_part,target_hum=nil,nil end
+    local c = best.Character
+    if c ~= target_char then target_char = c; target_part, target_hum = nil, nil end
     if not c then return end
     if not target_part or not target_part.Parent then
-        target_part = c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("UpperTorso") or c:FindFirstChild("Torso")
+        target_part = c:FindFirstChild("HumanoidRootPart")
+            or c:FindFirstChild("UpperTorso") or c:FindFirstChild("Torso")
     end
     if not target_hum or not target_hum.Parent then
         target_hum = c:FindFirstChildOfClass("Humanoid")
@@ -241,14 +337,20 @@ nearest_player=function()
 end
 
 local function sample_ping()
-    local ok,ms=pcall(function() return Stats.Network.ServerStatsItem["Data Ping"]:GetValue() end)
-    local rtt=(ok and type(ms)=="number" and ms>0) and (ms/1000) or 0
-    rtt=math.clamp(rtt,0,1)
-    if EC.seen then EC.rtt=EC.rtt*0.85+rtt*0.15 else EC.rtt=rtt; EC.seen=true end
+    local ok, ms = pcall(function() return Stats.Network.ServerStatsItem["Data Ping"]:GetValue() end)
+    local rtt = (ok and type(ms) == "number" and ms > 0) and (ms / 1000) or 0
+    rtt = math.clamp(rtt, 0, 1)
+    push_rtt(rtt)
+    if EC.seen then
+        EC.rtt = EC.rtt * 0.85 + rtt * 0.15
+        EC.jitter = EC.jitter * 0.8 + math.abs(rtt - EC.rtt) * 0.2
+    else
+        EC.rtt = rtt; EC.seen = true
+    end
 end
 
 -- ============================================================
--- [AIM] silent aim + wallbang + quiet peek
+-- [AIM]
 -- ============================================================
 task.spawn(function()
     while ADDON.loaded do
@@ -304,35 +406,102 @@ local function SA_getVel(root)
     return v
 end
 
-local function SA_rayBlocked(a, b, ignore)
-    local list = { workspace.CurrentCamera }
-    for _, x in ipairs(ignore or {}) do table.insert(list, x) end
-    local p = RaycastParams.new()
-    p.FilterType = Enum.RaycastFilterType.Exclude
-    for _ = 1, 8 do
-        p.FilterDescendantsInstances = list
-        local hit = workspace:Raycast(a, b - a, p)
-        if not hit then return false end
-        local i = hit.Instance
-        if i.Transparency >= 0.9 or not i.CanCollide then
-            table.insert(list, i)
-        else
-            return true
-        end
+local function SA_jumpScore(hum2, root)
+    if not hum2 or not root then return 1 end
+    local st = hum2:GetState()
+    if st ~= Enum.HumanoidStateType.Jumping
+    and st ~= Enum.HumanoidStateType.Freefall then
+        return 1.0
     end
-    return true
+    local vy = root.AssemblyLinearVelocity.Y
+    if vy > 8 then return 0.35
+    elseif vy > 0 then return 0.6
+    elseif vy > -25 then return 0.9
+    else return 1.0 end
 end
 
-local SA_BODY = { "UpperTorso", "Torso", "LowerTorso", "Head", "HumanoidRootPart",
-    "RightUpperArm", "LeftUpperArm", "Right Arm", "Left Arm" }
-local function SA_anyVisible(targetChar, origin)
-    for _, n in ipairs(SA_BODY) do
-        local pt = targetChar:FindFirstChild(n)
-        if pt and pt:IsA("BasePart") then
-            if not SA_rayBlocked(origin, pt.Position, { targetChar }) then return true end
+local function SA_predict(hum2, root, lead, aimHint)
+    if not SA.autoPred then
+        local v = SA_getVel(root)
+        return Vector3.new(v.X * lead, math.clamp(v.Y * lead, -3, 3), v.Z * lead)
+    end
+
+    local vPhys = root.AssemblyLinearVelocity
+    local md = hum2 and hum2.MoveDirection or Vector3.zero
+    local vBase
+
+    if hum2 and hum2.FloorMaterial == Enum.Material.Air then
+        local dy = vPhys.Y * lead - 0.5 * workspace.Gravity * lead * lead
+        return Vector3.new(vPhys.X * lead, dy, vPhys.Z * lead)
+    end
+
+    local vMove = md.Magnitude > 0.1
+        and (md.Unit * (hum2 and hum2.WalkSpeed or 16))
+        or Vector3.zero
+    vBase = vMove.Magnitude > 0.5 and vMove or SA_getVel(root)
+
+    if aimHint then
+        local toAim = aimHint - root.Position
+        if toAim.Magnitude > 0.01 then
+            local fwd = toAim.Unit
+            local right = fwd:Cross(Vector3.new(0, 1, 0))
+            if right.Magnitude > 0.01 then
+                right = right.Unit
+                local vRight = vBase:Dot(right)
+                local vFwd   = vBase:Dot(fwd)
+                vBase = fwd * vFwd + right * (vRight * SA.lateralBias)
+            end
         end
     end
-    return false
+
+    if md.Magnitude > 0.1 then
+        local right = root.CFrame.RightVector
+        local lateral = math.abs(right:Dot(md.Unit))
+        lead = lead + lateral * 0.04
+    end
+
+    return Vector3.new(vBase.X * lead, math.clamp(vBase.Y * lead, -3, 3), vBase.Z * lead)
+end
+
+local function SA_confidence(c, hum2, root, muzzle)
+    if not SA.bestMoment then return 1 end
+    local s = 1
+
+    if SA.antiJump then
+        s = s * SA_jumpScore(hum2, root)
+    end
+
+    local wvis, wtot = 0, 0
+    for _, n in ipairs(SA_BODY) do
+        local pt = c:FindFirstChild(n)
+        if pt and pt:IsA("BasePart") then
+            local w = BODY_WEIGHT[n] or 1
+            wtot = wtot + w
+            if not SA_rayBlocked(muzzle, pt.Position, { c }) then
+                wvis = wvis + w
+            end
+        end
+    end
+    if wtot > 0 then
+        s = s * (0.35 + 0.65 * (wvis / wtot))
+    end
+
+    if EC.jitter > 0.05 then
+        s = s * math.clamp(1 - (EC.jitter - 0.05) * 3, 0.5, 1)
+    end
+
+    local phase = SA_phase[c]
+    if hum2 and hum2.MoveDirection.Magnitude > 0.1 then
+        if phase and phase.lastMd and phase.lastMd.Magnitude > 0.1 then
+            local dot = hum2.MoveDirection.Unit:Dot(phase.lastMd.Unit)
+            if dot < 0.5 then s = s * 0.7 end
+        end
+        SA_phase[c] = { lastMd = hum2.MoveDirection }
+    else
+        SA_phase[c] = nil
+    end
+
+    return s
 end
 
 local function SA_findWbSpot(mRoot, muzzle)
@@ -389,38 +558,25 @@ local function resolve()
     local root = c:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
 
-    local vel = SA_getVel(root)
     local hum2 = c:FindFirstChildOfClass("Humanoid")
 
-    local lead = math.clamp(EC.rtt, 0.05, 0.45)
+    local lead = math.clamp(rtt_p90() + EC.jitter * 0.5, 0.05, 0.45)
     if lead < 0.09 then lead = 0.09 end
 
-    if hum2 then
-        local md = hum2.MoveDirection
-        if md.Magnitude > 0.1 then
-            local right = root.CFrame.RightVector
-            lead = lead + math.abs(right:Dot(md.Unit)) * 0.04
-        end
-    end
-
-    local dy = 0
-    if hum2 and hum2.FloorMaterial == Enum.Material.Air then
-        local vy = root.AssemblyLinearVelocity.Y
-        dy = vy * lead - 0.5 * workspace.Gravity * lead * lead
-    else
-        dy = math.clamp(vel.Y * lead, -3, 3)
-    end
-    if hum2 and hum2:GetState() == Enum.HumanoidStateType.Jumping then
-        dy = dy + (hum2.JumpPower or 50) * 0.012
-    end
-
-    local off = Vector3.new(vel.X * lead, dy, vel.Z * lead)
+    local off = SA_predict(hum2, root, lead)
 
     local myChar = LP.Character
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
     local att = myRoot and myRoot:FindFirstChild("GunRaycastAttachment")
     local muzzle = att and att.WorldPosition or (myRoot and myRoot.Position)
     if not muzzle then return nil end
+
+    local hint = root.Position + off
+    local off2 = SA_predict(hum2, root, lead, hint)
+    off = off * 0.5 + off2 * 0.5
+
+    local conf = SA_confidence(c, hum2, root, muzzle)
+    if conf < SA.confFloor then return nil end
 
     local wbSpot
     if SA.wb and SA_rayBlocked(muzzle, root.Position, { c, myChar }) and not SA_anyVisible(c, muzzle) then
@@ -438,9 +594,14 @@ local function resolve()
         quietCf = SA_findQuietSpot(root, myChar)
     end
 
-    local order = SA.part == "Head"
-        and { "Head", "UpperTorso", "Torso", "HumanoidRootPart", "LowerTorso" }
-        or { "UpperTorso", "Torso", "LowerTorso", "HumanoidRootPart", "Head" }
+    local order
+    if conf >= 0.75 then
+        order = { "Head", "UpperTorso", "Torso", "HumanoidRootPart", "LowerTorso" }
+    elseif SA.part == "Head" then
+        order = { "Head", "UpperTorso", "Torso", "HumanoidRootPart", "LowerTorso" }
+    else
+        order = { "UpperTorso", "Torso", "LowerTorso", "HumanoidRootPart", "Head" }
+    end
 
     local fromPos = wbSpot or (quietCf and quietCf.Position) or muzzle
     rp.FilterDescendantsInstances = { myChar, workspace.CurrentCamera }
@@ -453,13 +614,40 @@ local function resolve()
             local dir = aimPos - fromPos
             local hit = workspace:Raycast(fromPos, dir, rp)
             if not hit or hit.Instance:IsDescendantOf(c) then
-                table.insert(candidates, { pos = aimPos, dist = (aimPos - fromPos).Magnitude })
+                local w = BODY_WEIGHT[name] or 1
+                table.insert(candidates, {
+                    pos = aimPos,
+                    dist = (aimPos - fromPos).Magnitude,
+                    weight = w,
+                    name = name,
+                })
             end
         end
     end
+
+    local picked
     if #candidates > 0 then
-        table.sort(candidates, function(a,b) return a.dist < b.dist end)
-        return candidates[1].pos
+        table.sort(candidates, function(a, b)
+            if a.weight ~= b.weight then return a.weight > b.weight end
+            return a.dist < b.dist
+        end)
+        for _, cand in ipairs(candidates) do
+            if cand.weight >= 1.5 or cand.name == order[1] then
+                picked = cand.pos; break
+            end
+        end
+        picked = picked or candidates[1].pos
+    end
+
+    if picked then
+        if SA_lock.blendT > 0 and SA_lock.lastPos then
+            local t = 1 - SA_lock.blendT
+            local smooth = t * SA.blend
+            picked = SA_lock.lastPos + (picked - SA_lock.lastPos) * smooth
+            SA_lock.blendT = math.max(0, SA_lock.blendT - 0.16)
+        end
+        SA_lock.lastPos = picked
+        return picked
     end
 
     if wbSpot then
@@ -688,7 +876,7 @@ end
 connect_trace_fn=enableTracer_fn
 
 -- ============================================================
--- [BACKTRACK] — цвет тянется из FC.bt (палитра)
+-- [BACKTRACK]
 -- ============================================================
 bt_destroy=function()
     safe_destroy(BT.model); BT.model=nil
@@ -863,16 +1051,20 @@ local function startAntiJump()
     if antiJumpConn then return end
     antiJumpConn = RS.Heartbeat:Connect(function()
         if not SA.antiJump or not ADDON.loaded then return end
-        for _,p in ipairs(Players:GetPlayers()) do
-            if p~=LP and alive(p) and cachedRole(p)=="m" then
-                local c=p.Character
-                local h=c and c:FindFirstChildOfClass("Humanoid")
-                local hrp=c and c:FindFirstChild("HumanoidRootPart")
-                if h and hrp and h.FloorMaterial==Enum.Material.Air then
-                    local myRoot = HRP()
-                    if myRoot and (hrp.Position - myRoot.Position).Magnitude <= MOVE.antiJumpRad then
-                        if target_p ~= p then
-                            target_p = p; target_char = c; target_part = hrp; target_hum = h
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LP and alive(p) and cachedRole(p) == "m" then
+                local c = p.Character
+                local h = c and c:FindFirstChildOfClass("Humanoid")
+                local hrp = c and c:FindFirstChild("HumanoidRootPart")
+                if h and hrp and h.FloorMaterial == Enum.Material.Air then
+                    local vy = hrp.AssemblyLinearVelocity.Y
+                    if vy < 0 then
+                        local myRoot = HRP()
+                        if myRoot and (hrp.Position - myRoot.Position).Magnitude <= SA.jumpRadar then
+                            if target_p ~= p then
+                                target_p = p; target_char = c
+                                target_part = hrp; target_hum = h
+                            end
                         end
                     end
                 end
@@ -921,85 +1113,222 @@ task.spawn(function()
 end)
 
 -- ============================================================
--- [FLING]
+-- [FLING] — четыре режима, усиленная физика
 -- ============================================================
-local function flingCore(thrp,thum,time)
-    local c=LP.Character
-    local hrp=c and c:FindFirstChild("HumanoidRootPart"); if not hrp then return false end
-    local hum2=c and c:FindFirstChildOfClass("Humanoid"); if not hum2 then return false end
-    if thum and thum.Sit then return false end
-    local orig=hrp.CFrame
-    local cam=workspace.CurrentCamera
-    local oldSubj=cam.CameraSubject
-    local oldFall=workspace.FallenPartsDestroyHeight
-    pcall(function() workspace.FallenPartsDestroyHeight=0/0 end)
-    pcall(function() cam.CameraSubject=thrp end)
-    local bv=Instance.new("BodyVelocity")
-    bv.MaxForce=Vector3.new(9e9,9e9,9e9) bv.Velocity=Vector3.zero bv.Parent=hrp
-    local se=hum2:GetStateEnabled(Enum.HumanoidStateType.Seated)
-    pcall(function() hum2:SetStateEnabled(Enum.HumanoidStateType.Seated,false) end)
-    local t0=os.clock()
-    local dur=time or 1.6
-    local ang=0
-    while os.clock()-t0<dur and hrp.Parent and thrp.Parent do
-        local tv=thrp.Velocity
-        if tv.Magnitude>50 and thum then tv=thum.MoveDirection*thum.WalkSpeed end
-        local lead=thrp.Position+tv*0.08
-        ang=ang+165
-        local r=ang%360
-        local off
-        if r<90 then off=Vector3.new(0,2.5,0)
-        elseif r<180 then off=Vector3.new(0,-2.5,0)
-        elseif r<270 then off=Vector3.new(2.5,0,0)
-        else off=Vector3.new(-2.5,0,0) end
-        local cf=CFrame.new(lead+off)*CFrame.Angles(math.rad(ang),0,0)
+
+-- общий префикс: сохранить состояние, выключить seated, обнулить скорость
+local function flingSetup(hrp, hum2)
+    local old = {}
+    old.cf = hrp.CFrame
+    old.seated = hum2:GetStateEnabled(Enum.HumanoidStateType.Seated)
+    old.fall = workspace.FallenPartsDestroyHeight
+    old.camSubj = workspace.CurrentCamera and workspace.CurrentCamera.CameraSubject
+    pcall(function() hum2:SetStateEnabled(Enum.HumanoidStateType.Seated, false) end)
+    pcall(function() workspace.FallenPartsDestroyHeight = 0/0 end)
+    return old
+end
+
+local function flingTeardown(hrp, hum2, old)
+    pcall(function() hum2:SetStateEnabled(Enum.HumanoidStateType.Seated, old.seated) end)
+    pcall(function() workspace.FallenPartsDestroyHeight = old.fall end)
+    if workspace.CurrentCamera and old.camSubj then
+        pcall(function() workspace.CurrentCamera.CameraSubject = old.camSubj end)
+    end
+    if hrp.Parent then
         pcall(function()
-            hrp.CFrame=cf
-            c:SetPrimaryPartCFrame(cf)
-            hrp.Velocity=Vector3.new(9e8,9e8*10,9e8)
-            hrp.RotVelocity=Vector3.new(9e9,9e9,9e9)
+            hrp.CFrame = old.cf
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+            hum2:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end)
+    end
+end
+
+-- режим 1: orbit — цель вокруг жертвы с нарастающей угловой скоростью
+local function flingOrbit(hrp, thum, thrp, dur)
+    local ang = 0
+    local t0 = os.clock()
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9) bv.Velocity = Vector3.zero bv.Parent = hrp
+    local bav = Instance.new("BodyAngularVelocity")
+    bav.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+    bav.AngularVelocity = Vector3.new(0, 0, 0)
+    bav.Parent = hrp
+    while os.clock() - t0 < dur and hrp.Parent and thrp.Parent do
+        local tv = thrp.Velocity
+        if tv.Magnitude > 50 and thum then tv = thum.MoveDirection * thum.WalkSpeed end
+        local lead = thrp.Position + tv * 0.08
+        ang = ang + 165
+        local r = ang % 360
+        local off
+        if r < 90 then off = Vector3.new(0, 2.5, 0)
+        elseif r < 180 then off = Vector3.new(0, -2.5, 0)
+        elseif r < 270 then off = Vector3.new(2.5, 0, 0)
+        else off = Vector3.new(-2.5, 0, 0) end
+        local cf = CFrame.new(lead + off) * CFrame.Angles(math.rad(ang), 0, 0)
+        pcall(function()
+            hrp.CFrame = cf
+            hrp.AssemblyLinearVelocity = Vector3.new(FLING.force, FLING.force * 10, FLING.force)
+            hrp.AssemblyAngularVelocity = Vector3.new(9e9, 9e9, 9e9)
         end)
         RS.Heartbeat:Wait()
     end
-    safe_destroy(bv)
-    pcall(function() hum2:SetStateEnabled(Enum.HumanoidStateType.Seated,se) end)
-    pcall(function() cam.CameraSubject=hum2 end)
-    if hrp.Parent then
+    safe_destroy(bv); safe_destroy(bav)
+end
+
+-- режим 2: slam — прямая инъекция скорости через BodyVelocity+BodyAngularVelocity
+local function flingSlam(hrp, thum, thrp, dur)
+    local t0 = os.clock()
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9) bv.P = 1e5 bv.Parent = hrp
+    local bav = Instance.new("BodyAngularVelocity")
+    bav.MaxTorque = Vector3.new(9e9, 9e9, 9e9) bav.P = 1e5 bav.Parent = hrp
+    while os.clock() - t0 < dur and hrp.Parent and thrp.Parent do
+        local dir = (thrp.Position - hrp.Position)
+        if dir.Magnitude < 1 then dir = Vector3.new(0, 1, 0) end
+        dir = dir.Unit
         pcall(function()
-            hrp.CFrame=orig
-            c:SetPrimaryPartCFrame(orig)
-            hum2:ChangeState(Enum.HumanoidStateType.GettingUp)
-            hrp.Velocity=Vector3.zero
+            bv.Velocity = dir * FLING.force + Vector3.new(0, FLING.force * 0.5, 0)
+            bav.AngularVelocity = Vector3.new(FLING.force, FLING.force, FLING.force)
         end)
+        RS.Heartbeat:Wait()
     end
-    pcall(function() workspace.FallenPartsDestroyHeight=oldFall end)
-    if oldSubj then pcall(function() cam.CameraSubject=oldSubj end) end
+    safe_destroy(bv); safe_destroy(bav)
+end
+
+-- режим 3: spin — вращение вокруг цели с накоплением угловой скорости
+local function flingSpin(hrp, thum, thrp, dur)
+    local t0 = os.clock()
+    local bav = Instance.new("BodyAngularVelocity")
+    bav.MaxTorque = Vector3.new(9e9, 9e9, 9e9) bav.Parent = hrp
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9) bv.Parent = hrp
+    local spin = 0
+    while os.clock() - t0 < dur and hrp.Parent and thrp.Parent do
+        spin = spin + 800
+        local dir = (thrp.Position - hrp.Position)
+        if dir.Magnitude < 1 then dir = Vector3.new(0, 1, 0) end
+        dir = dir.Unit
+        pcall(function()
+            bav.AngularVelocity = Vector3.new(math.rad(spin) % (2*math.pi), spin, 0)
+            bv.Velocity = dir * (FLING.force * 0.5)
+            hrp.RotVelocity = Vector3.new(9e9, 9e9, 9e9)
+        end)
+        RS.Heartbeat:Wait()
+    end
+    safe_destroy(bav); safe_destroy(bv)
+end
+
+-- режим 4: anchor-break — временная анкоризация, swing через pivot, потом отпуск
+local function flingAnchor(hrp, thum, thrp, dur)
+    local t0 = os.clock()
+    local wasAnchored = hrp.Anchored
+    local wasMassless = hrp.Massless
+    hrp.Anchored = false
+    hrp.Massless = true
+    local bav = Instance.new("BodyAngularVelocity")
+    bav.MaxTorque = Vector3.new(9e9, 9e9, 9e9) bav.Parent = hrp
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9) bv.Parent = hrp
+    local angle = 0
+    while os.clock() - t0 < dur and hrp.Parent and thrp.Parent do
+        angle = angle + 240
+        local r = math.rad(angle)
+        local r2 = 8 + 4 * math.sin(r * 1.5)
+        local offset = Vector3.new(math.cos(r) * r2, 3 + 2 * math.sin(r * 2), math.sin(r) * r2)
+        pcall(function()
+            hrp.CFrame = CFrame.new(thrp.Position + offset) * CFrame.Angles(r * 3, r, 0)
+            hrp.AssemblyLinearVelocity = Vector3.new(FLING.force, FLING.force * 2, FLING.force)
+            hrp.AssemblyAngularVelocity = Vector3.new(9e9, 9e9, 9e9)
+            bav.AngularVelocity = Vector3.new(9e9, 9e9, 9e9)
+            bv.Velocity = Vector3.new(FLING.force, FLING.force * 3, FLING.force)
+        end)
+        RS.Heartbeat:Wait()
+    end
+    hrp.Anchored = wasAnchored
+    hrp.Massless = wasMassless
+    safe_destroy(bav); safe_destroy(bv)
+end
+
+local function flingCore(thrp, thum, dur)
+    local c = LP.Character
+    local hrp = c and c:FindFirstChild("HumanoidRootPart"); if not hrp then return false end
+    local hum2 = c:FindFirstChildOfClass("Humanoid"); if not hum2 then return false end
+    if thum and thum.Sit then return false end
+
+    local old = flingSetup(hrp, hum2)
+    local d = dur or FLING.duration
+
+    if FLING.mode == "orbit" then
+        flingOrbit(hrp, thum, thrp, d)
+    elseif FLING.mode == "slam" then
+        flingSlam(hrp, thum, thrp, d)
+    elseif FLING.mode == "spin" then
+        flingSpin(hrp, thum, thrp, d)
+    elseif FLING.mode == "anchor" then
+        flingAnchor(hrp, thum, thrp, d)
+    else
+        flingOrbit(hrp, thum, thrp, d)
+    end
+
+    flingTeardown(hrp, hum2, old)
     return true
 end
-local function flingTarget(target)
+
+local function flingTarget(target, dur)
     if TROLL.flinging then return end
-    local tchar=target and target.Character; if not tchar then return end
-    local thrp=tchar:FindFirstChild("HumanoidRootPart") or tchar:FindFirstChild("Head"); if not thrp then return end
-    local thum=tchar:FindFirstChildOfClass("Humanoid")
-    TROLL.flinging=true
-    task.spawn(function() flingCore(thrp,thum,2.2); TROLL.flinging=false end)
-end
-local function flingNearest() local t=nearest_player(); if t then flingTarget(t) end end
-local function flingAll()
-    if TROLL.flinging then return end
-    TROLL.flinging=true
+    local tchar = target and target.Character; if not tchar then return end
+    local thrp = tchar:FindFirstChild("HumanoidRootPart") or tchar:FindFirstChild("Head"); if not thrp then return end
+    local thum = tchar:FindFirstChildOfClass("Humanoid")
+    TROLL.flinging = true
+    FLING.active = true
     task.spawn(function()
-        for _,p in ipairs(Players:GetPlayers()) do
-            if p~=LP and p.Character then
-                local thrp=p.Character:FindFirstChild("HumanoidRootPart") or p.Character:FindFirstChild("Head")
-                local thum=p.Character:FindFirstChildOfClass("Humanoid")
-                if thrp and HRP() then flingCore(thrp,thum,1.5); task.wait(0.15) end
-            end
-        end
-        TROLL.flinging=false
+        flingCore(thrp, thum, dur or 2.2)
+        TROLL.flinging = false
+        FLING.active = false
     end)
 end
-local function stopTroll() TROLL.flinging=false end
+
+local function flingNearest()
+    local t = nearest_player()
+    if t then flingTarget(t) end
+end
+
+local function flingAll()
+    if TROLL.flinging then return end
+    TROLL.flinging = true
+    FLING.active = true
+    task.spawn(function()
+        for _,p in ipairs(Players:GetPlayers()) do
+            if p ~= LP and p.Character then
+                local thrp = p.Character:FindFirstChild("HumanoidRootPart") or p.Character:FindFirstChild("Head")
+                local thum = p.Character:FindFirstChildOfClass("Humanoid")
+                if thrp and HRP() then
+                    local c = LP.Character
+                    local hrp = c and c:FindFirstChild("HumanoidRootPart")
+                    local hum2 = c and c:FindFirstChildOfClass("Humanoid")
+                    if hrp and hum2 then
+                        local old = flingSetup(hrp, hum2)
+                        if FLING.mode == "orbit" then flingOrbit(hrp, thum, thrp, 1.5)
+                        elseif FLING.mode == "slam" then flingSlam(hrp, thum, thrp, 1.5)
+                        elseif FLING.mode == "spin" then flingSpin(hrp, thum, thrp, 1.5)
+                        elseif FLING.mode == "anchor" then flingAnchor(hrp, thum, thrp, 1.5)
+                        else flingOrbit(hrp, thum, thrp, 1.5) end
+                        flingTeardown(hrp, hum2, old)
+                    end
+                end
+                task.wait(0.1)
+            end
+        end
+        TROLL.flinging = false
+        FLING.active = false
+    end)
+end
+
+local function stopTroll()
+    TROLL.flinging = false
+    FLING.active = false
+end
 
 -- ============================================================
 -- [VISUALS]
@@ -1199,7 +1528,7 @@ local function mkHat()
     r.Massless=true; r.CanCollide=false; r.CanQuery=false; r.CanTouch=false
     r.Anchored=true; r.Material=Enum.Material.Neon; r.Color=LT(col)
     r.Transparency=0.2; r.CastShadow=false; r.Parent=c
-    if hatC then hatC:Disconnect() end
+    safe_disconnect(hatC); hatC=nil
     hatC=RS.RenderStepped:Connect(function()
         if not h.Parent or not r.Parent then
             safe_disconnect(hatC); hatC=nil; return
@@ -1225,7 +1554,7 @@ local function mkRB()
     h.Name="sRB"; h.FillTransparency=0.35; h.OutlineTransparency=0
     h.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop; h.Parent=c
     local hue=0
-    if rbC then rbC:Disconnect() end
+    safe_disconnect(rbC); rbC=nil
     rbC=RS.Heartbeat:Connect(function(dt)
         if not h.Parent then safe_disconnect(rbC); rbC=nil; return end
         hue=(hue+dt*SZ.rainbow)%1
@@ -1709,9 +2038,36 @@ end })
 TabCombat:AddToggle({ Name = "Quiet Peek", Default = true, Callback = function(v)
     SA.quiet = v; MakeNotif("Quiet Peek", v and "enabled" or "disabled", 2)
 end })
+
+TabCombat:AddSection({ Name = "Intelligence" })
 TabCombat:AddToggle({ Name = "Anti Spam-Jumper", Default = true, Callback = function(v)
     SA.antiJump = v; MakeNotif("Anti Jump", v and "enabled" or "disabled", 2)
 end })
+TabCombat:AddSlider({ Name = "Jump Radar", Min = 5, Max = 100, Default = 25, Increment = 1,
+    ValueName = "studs", Color = Color3.fromRGB(86,76,251),
+    Callback = function(v) SA.jumpRadar = v end })
+TabCombat:AddToggle({ Name = "Auto Predict", Default = true, Callback = function(v)
+    SA.autoPred = v; MakeNotif("Auto Predict", v and "enabled" or "disabled", 2)
+end })
+TabCombat:AddToggle({ Name = "Best Moment", Default = true, Callback = function(v)
+    SA.bestMoment = v; MakeNotif("Best Moment", v and "enabled" or "disabled", 2)
+end })
+TabCombat:AddSlider({ Name = "Confidence Floor", Min = 0.1, Max = 0.9, Default = 0.5, Increment = 0.05,
+    ValueName = "score", Color = Color3.fromRGB(86,76,251),
+    Callback = function(v) SA.confFloor = v end })
+TabCombat:AddSlider({ Name = "FOV", Min = 30, Max = 360, Default = 180, Increment = 5,
+    ValueName = "deg", Color = Color3.fromRGB(86,76,251),
+    Callback = function(v) SA.fov = v end })
+TabCombat:AddSlider({ Name = "Angle Bias", Min = 0.0, Max = 1.0, Default = 0.4, Increment = 0.05,
+    ValueName = "coef", Color = Color3.fromRGB(86,76,251),
+    Callback = function(v) SA.angleBias = v end })
+TabCombat:AddSlider({ Name = "Lateral Bias", Min = 1.0, Max = 2.5, Default = 1.6, Increment = 0.1,
+    ValueName = "x", Color = Color3.fromRGB(86,76,251),
+    Callback = function(v) SA.lateralBias = v end })
+TabCombat:AddSlider({ Name = "Switch Blend", Min = 0.0, Max = 1.0, Default = 0.35, Increment = 0.05,
+    ValueName = "coef", Color = Color3.fromRGB(86,76,251),
+    Callback = function(v) SA.blend = v end })
+
 TabCombat:AddButton({ Name = "Switch Aim Part", Callback = function()
     SA.part = SA.part == "Torso" and "Head" or "Torso"
     MakeNotif("Aim Part", SA.part, 2)
@@ -1813,9 +2169,22 @@ TabMove:AddToggle({ Name = "Anti Fall", Default = false, Callback = function(v) 
 TabMove:AddToggle({ Name = "Anti Fling", Default = false, Callback = function(v) fl.antifling=v end })
 TabMove:AddToggle({ Name = "Ctrl+Click TP", Default = false, Callback = function(v) MOVE.ctrltp=v end })
 
--- TROLL
+-- TROLL — обновлённые режимы fling
 local TabTroll = Window:MakeTab({ Name = "Troll", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 TabTroll:AddSection({ Name = "Fling" })
+TabTroll:AddDropdown({
+    Name = "Fling Mode",
+    Default = "orbit",
+    Options = { "orbit", "slam", "spin", "anchor" },
+    Callback = function(v) FLING.mode = v; MakeNotif("Fling Mode", v, 2) end,
+})
+TabTroll:AddSlider({ Name = "Fling Force", Min = 1e6, Max = 9e9, Default = 9e8, Increment = 1e7,
+    ValueName = "N", Color = Color3.fromRGB(86,76,251),
+    Callback = function(v) FLING.force = v end })
+TabTroll:AddSlider({ Name = "Fling Duration", Min = 0.5, Max = 5, Default = 2.2, Increment = 0.1,
+    ValueName = "s", Color = Color3.fromRGB(86,76,251),
+    Callback = function(v) FLING.duration = v end })
+
 TabTroll:AddButton({ Name = "Fling Nearest", Callback = function() flingNearest() end })
 TabTroll:AddButton({ Name = "Fling All", Callback = function() flingAll() end })
 TabTroll:AddButton({ Name = "Fling Murderer", Callback = function()
@@ -1867,26 +2236,8 @@ TabTroll:AddButton({ Name = "Dizzy", Callback = function()
     task.delay(3, function() MOVE.spin=false; pcall(stopSpin) end)
 end })
 
--- VISUALS — все цвета через палитру, включая backtrack
+-- VISUALS
 local TabVisuals = Window:MakeTab({ Name = "Visuals", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabVisuals:AddSection({ Name = "Color Picker (Palette)" })
-
-local vizLabels = {
-    "Trail","Aura","Hat","Glow","Snow","Light","Orb","Foot",
-    "Ghost","Jump","SkyDust","Bounce","Tracer","Atmo","Backtrack",
-}
-local vizMap = {
-    Trail="trail", Aura="parts", Hat="hat", Glow="glow", Snow="snow", Light="lightning",
-    Orb="orbAura", Foot="foot", Ghost="ghost", Jump="jump", SkyDust="skyDust",
-    Bounce="bounce", Tracer="tracer", Atmo="atmo", Backtrack="bt",
-}
-
-TabVisuals:AddDropdown({
-    Name = "Select Visual",
-    Default = "Trail",
-    Options = vizLabels,
-    Callback = function(v) activeViz = vizMap[v] or "trail" end
-})
 
 local function rebuildEffect(key)
     if key=="trail"     and fl.trail     then pcall(clTrail); pcall(mkTrail) end
@@ -1905,37 +2256,107 @@ local function rebuildEffect(key)
     if key=="bt"        and BT.on        then pcall(bt_destroy); pcall(bt_build) end
 end
 
-TabVisuals:AddColorpicker({
-    Name = "Pick Color (Palette)",
-    Default = Color3.fromRGB(0,220,255),
-    Callback = function(color)
-        FC[activeViz] = color
-        rebuildEffect(activeViz)
-    end
-})
-
 TabVisuals:AddSection({ Name = "Character" })
-TabVisuals:AddToggle({ Name = "Neon Trail",  Default = false, Callback = function(v) fl.trail=v;   if v then mkTrail()   else clTrail()   end end })
-TabVisuals:AddToggle({ Name = "China Hat",   Default = false, Callback = function(v) fl.hat=v;     if v then mkHat()     else clHat()     end end })
-TabVisuals:AddToggle({ Name = "Body Glow",   Default = false, Callback = function(v) fl.glow=v;    if v then mkGlow()    else clGlow()    end end })
-TabVisuals:AddToggle({ Name = "Rainbow Body",Default = false, Callback = function(v) fl.rainbow=v; if v then mkRB()      else clRB()      end end })
+
+TabVisuals:AddToggle({ Name = "Neon Trail", Default = false, Callback = function(v)
+    fl.trail=v; if v then mkTrail() else clTrail() end
+end })
+TabVisuals:AddColorpicker({ Name = "Trail Color", Default = FC.trail, Callback = function(c)
+    FC.trail=c; rebuildEffect("trail")
+end })
+
+TabVisuals:AddToggle({ Name = "China Hat", Default = false, Callback = function(v)
+    fl.hat=v; if v then mkHat() else clHat() end
+end })
+TabVisuals:AddColorpicker({ Name = "Hat Color", Default = FC.hat, Callback = function(c)
+    FC.hat=c; rebuildEffect("hat")
+end })
+
+TabVisuals:AddToggle({ Name = "Body Glow", Default = false, Callback = function(v)
+    fl.glow=v; if v then mkGlow() else clGlow() end
+end })
+TabVisuals:AddColorpicker({ Name = "Glow Color", Default = FC.glow, Callback = function(c)
+    FC.glow=c; rebuildEffect("glow")
+end })
+
+TabVisuals:AddToggle({ Name = "Rainbow Body", Default = false, Callback = function(v)
+    fl.rainbow=v; if v then mkRB() else clRB() end
+end })
 
 TabVisuals:AddSection({ Name = "Particles" })
-TabVisuals:AddToggle({ Name = "Aura Particles",   Default = false, Callback = function(v) fl.parts=v;     if v then mkParts()   else clParts()   end end })
-TabVisuals:AddToggle({ Name = "Sky Dust",         Default = false, Callback = function(v) fl.skyDust=v;   if v then mkSky()     else clSky()     end end })
-TabVisuals:AddToggle({ Name = "Hearts Sky",       Default = false, Callback = function(v) skyHeart=v;      if fl.skyDust then clSky(); mkSky() end end })
-TabVisuals:AddToggle({ Name = "Snow Aura",        Default = false, Callback = function(v) fl.snow=v;      if v then mkSnow()    else clSnow()    end end })
-TabVisuals:AddToggle({ Name = "Bounce Particles", Default = false, Callback = function(v) fl.bounce=v;    if v then mkBo()      else clBo()      end end })
-TabVisuals:AddToggle({ Name = "Hearts Bounce",    Default = false, Callback = function(v) boHeart=v;      if fl.bounce then clBo(); mkBo() end end })
-TabVisuals:AddToggle({ Name = "Lightning Aura",   Default = false, Callback = function(v) fl.lightning=v; if v then mkLight()   else clLight()   end end })
-TabVisuals:AddToggle({ Name = "Orb Aura",         Default = false, Callback = function(v) fl.orbAura=v;   if v then mkOrb()     else clOrb()     end end })
-TabVisuals:AddToggle({ Name = "Ghost Trail",      Default = false, Callback = function(v) fl.ghost=v;     if v then mkGhost()   else clGhost()   end end })
-TabVisuals:AddToggle({ Name = "Footsteps",        Default = false, Callback = function(v) fl.foot=v;      if v then mkFoot()    else clFoot()    end end })
+
+TabVisuals:AddToggle({ Name = "Aura Particles", Default = false, Callback = function(v)
+    fl.parts=v; if v then mkParts() else clParts() end
+end })
+TabVisuals:AddColorpicker({ Name = "Aura Color", Default = FC.parts, Callback = function(c)
+    FC.parts=c; rebuildEffect("parts")
+end })
+
+TabVisuals:AddToggle({ Name = "Sky Dust", Default = false, Callback = function(v)
+    fl.skyDust=v; if v then mkSky() else clSky() end
+end })
+TabVisuals:AddColorpicker({ Name = "SkyDust Color", Default = FC.skyDust, Callback = function(c)
+    FC.skyDust=c; rebuildEffect("skyDust")
+end })
+
+TabVisuals:AddToggle({ Name = "Hearts Sky", Default = false, Callback = function(v)
+    skyHeart=v; if fl.skyDust then clSky(); mkSky() end
+end })
+
+TabVisuals:AddToggle({ Name = "Snow Aura", Default = false, Callback = function(v)
+    fl.snow=v; if v then mkSnow() else clSnow() end
+end })
+TabVisuals:AddColorpicker({ Name = "Snow Color", Default = FC.snow, Callback = function(c)
+    FC.snow=c; rebuildEffect("snow")
+end })
+
+TabVisuals:AddToggle({ Name = "Bounce Particles", Default = false, Callback = function(v)
+    fl.bounce=v; if v then mkBo() else clBo() end
+end })
+TabVisuals:AddColorpicker({ Name = "Bounce Color", Default = FC.bounce, Callback = function(c)
+    FC.bounce=c; rebuildEffect("bounce")
+end })
+
+TabVisuals:AddToggle({ Name = "Hearts Bounce", Default = false, Callback = function(v)
+    boHeart=v; if fl.bounce then clBo(); mkBo() end
+end })
+
+TabVisuals:AddToggle({ Name = "Lightning Aura", Default = false, Callback = function(v)
+    fl.lightning=v; if v then mkLight() else clLight() end
+end })
+TabVisuals:AddColorpicker({ Name = "Lightning Color", Default = FC.lightning, Callback = function(c)
+    FC.lightning=c; rebuildEffect("lightning")
+end })
+
+TabVisuals:AddToggle({ Name = "Orb Aura", Default = false, Callback = function(v)
+    fl.orbAura=v; if v then mkOrb() else clOrb() end
+end })
+TabVisuals:AddColorpicker({ Name = "Orb Color", Default = FC.orbAura, Callback = function(c)
+    FC.orbAura=c; rebuildEffect("orbAura")
+end })
+
+TabVisuals:AddToggle({ Name = "Ghost Trail", Default = false, Callback = function(v)
+    fl.ghost=v; if v then mkGhost() else clGhost() end
+end })
+TabVisuals:AddColorpicker({ Name = "Ghost Color", Default = FC.ghost, Callback = function(c)
+    FC.ghost=c; rebuildEffect("ghost")
+end })
+
+TabVisuals:AddToggle({ Name = "Footsteps", Default = false, Callback = function(v)
+    fl.foot=v; if v then mkFoot() else clFoot() end
+end })
+TabVisuals:AddColorpicker({ Name = "Foot Color", Default = FC.foot, Callback = function(c)
+    FC.foot=c; rebuildEffect("foot")
+end })
 
 TabVisuals:AddSection({ Name = "Effects" })
+
 TabVisuals:AddToggle({ Name = "Bullet Tracer", Default = false, Callback = function(v)
     TRACE.on=v; fl.tracer=v
     if v then task.spawn(connect_trace_fn) else disableTracer_fn() end
+end })
+TabVisuals:AddColorpicker({ Name = "Tracer Color", Default = FC.tracer, Callback = function(c)
+    FC.tracer=c
 end })
 
 -- MODEL
@@ -1949,6 +2370,9 @@ local TabJump = Window:MakeTab({ Name = "Jump", Icon = "rbxassetid://4483345998"
 TabJump:AddToggle({ Name = "Jump Circles", Default = false, Callback = function(v)
     fl.jump=v; if v then mkJump() else clJump() end
 end })
+TabJump:AddColorpicker({ Name = "Jump Ring Color", Default = FC.jump, Callback = function(c)
+    FC.jump=c; rebuildEffect("jump")
+end })
 TabJump:AddSection({ Name = "Style" })
 TabJump:AddButton({ Name = "Classic",        Callback = function() jStyle = "Classic"   end })
 TabJump:AddButton({ Name = "Double Ring",    Callback = function() jStyle = "Double"    end })
@@ -1957,10 +2381,15 @@ TabJump:AddButton({ Name = "Particle Burst", Callback = function() jStyle = "Par
 
 -- WORLD
 local TabWorld = Window:MakeTab({ Name = "World", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabWorld:AddToggle({ Name = "Cyberpunk Atmo", Default = false, Callback = function(v) fl.atmo=v;   if v then mkAtmo()    else clAtmo()    end end })
-TabWorld:AddToggle({ Name = "FullBright",     Default = false, Callback = function(v) fl.fb=v;     if v then mkFB()      else clFB()      end end })
-TabWorld:AddToggle({ Name = "Skybox",         Default = false, Callback = function(v) fl.sky=v;    if v then mkSkybox()  else clSkybox()  end end })
-TabWorld:AddToggle({ Name = "Bloom",          Default = false, Callback = function(v) fl.bloom=v;  if v then mkBloom()   else clBloom()   end end })
+TabWorld:AddToggle({ Name = "Cyberpunk Atmo", Default = false, Callback = function(v)
+    fl.atmo=v; if v then mkAtmo() else clAtmo() end
+end })
+TabWorld:AddColorpicker({ Name = "Atmo Color", Default = FC.atmo, Callback = function(c)
+    FC.atmo=c; rebuildEffect("atmo")
+end })
+TabWorld:AddToggle({ Name = "FullBright", Default = false, Callback = function(v) fl.fb=v; if v then mkFB() else clFB() end end })
+TabWorld:AddToggle({ Name = "Skybox", Default = false, Callback = function(v) fl.sky=v; if v then mkSkybox() else clSkybox() end end })
+TabWorld:AddToggle({ Name = "Bloom", Default = false, Callback = function(v) fl.bloom=v; if v then mkBloom() else clBloom() end end })
 TabWorld:AddSection({ Name = "Time" })
 TabWorld:AddButton({ Name = "Day",    Callback = function() applyTime("Day")    end })
 TabWorld:AddButton({ Name = "Sunset", Callback = function() applyTime("Sunset") end })
@@ -1977,9 +2406,9 @@ TabEsp:AddToggle({ Name = "Role Tag (text)", Default = false, Callback = functio
     if not v then for pl in pairs(espTxtTags) do detachRoleTag(pl) end end
 end })
 
--- THEME — только picker'ы, без заготовленных кнопок
+-- THEME
 local TabTheme = Window:MakeTab({ Name = "Theme", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabTheme:AddSection({ Name = "Menu Theme (Palette)" })
+TabTheme:AddSection({ Name = "Menu Theme" })
 TabTheme:AddColorpicker({
     Name = "Accent Color",
     Default = Color3.fromRGB(86,76,251),
@@ -1996,15 +2425,15 @@ TabTheme:AddColorpicker({
     Callback = function(c) pcall(function() OrionLib:ChangeColor("Element", c) end) end
 })
 
--- EXTRA — без Reset Visual Colors
+-- EXTRA
 local TabExtra = Window:MakeTab({ Name = "Extra", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 TabExtra:AddToggle({ Name = "Kill Lightning", Default = true, Callback = function(v) killOn=v end })
 TabExtra:AddToggle({ Name = "Backtrack", Default = false, Callback = function(v)
     BT.on=v
-    if v then
-        task.spawn(bt_build)
-        MakeNotif("Backtrack", "color via Visuals > Backtrack", 3)
-    end
+    if v then task.spawn(bt_build) end
+end })
+TabExtra:AddColorpicker({ Name = "Backtrack Color", Default = FC.bt, Callback = function(c)
+    FC.bt=c; rebuildEffect("bt")
 end })
 TabExtra:AddToggle({ Name = "Anti AFK", Default = false, Callback = function(v) fl.noafk=v end })
 TabExtra:AddButton({ Name = "Clear Particles", Callback = function()
@@ -2046,6 +2475,19 @@ end)
 ADDON.hb = RS.Heartbeat:Connect(function()
     if not ADDON.loaded then return end
     pcall(function()
+        for k in pairs(SA_phase) do
+            local h = k and k:FindFirstChildOfClass("Humanoid")
+            if not k or not k.Parent or not h or h.Health <= 0 then
+                SA_phase[k] = nil
+            end
+        end
+
+        if not target_p or not target_p.Character or not target_p.Character.Parent then
+            SA_lock.lastChar = nil
+            SA_lock.lastPos = nil
+            SA_lock.blendT = 0
+        end
+
         local now = os.clock()
         if now - (ADDON.role_acc or 0) >= 0.08 then
             ADDON.role_acc = now
@@ -2160,5 +2602,5 @@ ADDON.unload = function()
 end
 
 OrionLib:Init()
-MakeNotif("StarWare", "Loaded В· right shift to hide menu", 4)
-print("[addon] v3 ready вЂ” Orion UI (Qanuir fork)")
+MakeNotif("StarWare", "Loaded · right shift to hide menu", 4)
+print("[addon] v3 ready — Orion UI (Qanuir fork)")
