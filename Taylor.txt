@@ -1,8 +1,8 @@
 --!nocheck
 --!nolint
 -- ============================================================
--- StarWare v3.2 · Orion UI (Qanuir fork) · KITI skin
--- mobile-ready · wall check · aim FOV/angle/lateral · p90-rtt
+-- StarWare v3 · Orion UI (Qanuir fork)
+-- aim: FOV · angle-bias · lateral-bias · p90-rtt · двухпроходный лид · weighted head · wall check
 -- fling: orbit · slam · spin · anchor-break
 -- ============================================================
 if getgenv().UN_ADDON and getgenv().UN_ADDON.loaded then
@@ -27,33 +27,9 @@ end
 local Cam        = workspace.CurrentCamera
 
 -- ============================================================
--- [UI PARENT] desktop → CoreGui, mobile → gethui/HiddenRoot
--- ============================================================
-local function get_ui_parent()
-    local ok, hui = pcall(function() return gethui() end)
-    if ok and hui then return hui end
-    local ok2, hui2 = pcall(function()
-        return game:GetService("CoreGui")
-    end)
-    if ok2 and hui2 then return hui2 end
-    return LP:WaitForChild("PlayerGui")
-end
-local UI_PARENT = get_ui_parent()
-
--- ============================================================
--- [UI] Orion loader (Qanuir fork) + KITI palette
+-- [UI] Orion loader (Qanuir fork)
 -- ============================================================
 local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/Qanuir/orion-ui/refs/heads/main/source.lua'))()
-
-if type(OrionLib) == "table" then
-    pcall(function() OrionLib.ScreenGuiParent = UI_PARENT end)
-end
-
-pcall(function() OrionLib:ChangeColor("Accent",     Color3.fromRGB(255, 175, 215)) end)
-pcall(function() OrionLib:ChangeColor("Background", Color3.fromRGB(30, 22, 36))    end)
-pcall(function() OrionLib:ChangeColor("Element",    Color3.fromRGB(46, 34, 54))    end)
-pcall(function() OrionLib:ChangeColor("Text",       Color3.fromRGB(240, 232, 248)) end)
-pcall(function() OrionLib:ChangeColor("SubText",    Color3.fromRGB(180, 170, 200)) end)
 
 local function MakeNotif(name, content, dur)
     pcall(function()
@@ -83,7 +59,7 @@ end
 local SA = { enabled=true, part="Torso", quiet=true, wb=true, wbTemp=nil, antiJump=true,
     autoPred=true, bestMoment=true, jumpRadar=25, confFloor=0.5,
     fov=180, angleBias=0.4, lateralBias=1.6, blend=0.35,
-    wallCheck=false, wallCheckCov=0.30, wallCheckEsp=false }
+    wallCheck=true, wallMin=0.25, wallGrace=0.18 }
 
 local SA_hist = {}
 local SA_phase = {}
@@ -106,7 +82,14 @@ local moveConns = { infJump=nil, noclip=nil, nc={} }
 local flyConn, spinConn
 local antiJumpConn = nil
 
-local FLING = { mode="orbit", force=9e8, duration=2.2, active=false }
+-- fling config
+local FLING = {
+    mode = "orbit",         -- orbit | slam | spin | anchor
+    force = 9e8,
+    duration = 2.2,
+    active = false,
+}
+
 local TROLL = { flinging=false }
 
 local fl = { trail=false, parts=false, hat=false, foot=false, rainbow=false,
@@ -254,45 +237,38 @@ local function SA_anyVisible(targetChar, origin)
     return false
 end
 
--- ============================================================
--- [WALL CHECK]
--- ============================================================
-local function wall_check(targetChar, origin, ignoreExtra)
-    if not targetChar or not targetChar.Parent then return false end
-    origin = origin or (Cam and Cam.CFrame.Position)
-    if not origin then return false end
-    local ignore = { targetChar }
-    if ignoreExtra then
-        for _, x in ipairs(ignoreExtra) do table.insert(ignore, x) end
-    end
-    local wvis, wtot, best, bestName = 0, 0, nil, nil
+-- wall check: weighted visibility + grace window
+-- returns visible(bool), ratio(0..1), lastSeenDelta(sec, math.huge if never)
+local SA_lastSeen = setmetatable({}, {__mode = "k"})
+
+local function SA_wallCheck(tchar, origin)
+    if not tchar then return false, 0, math.huge end
+    local now = os.clock()
+    local visW, totW = 0, 0
     for _, n in ipairs(SA_BODY) do
-        local pt = targetChar:FindFirstChild(n)
+        local pt = tchar:FindFirstChild(n)
         if pt and pt:IsA("BasePart") then
             local w = BODY_WEIGHT[n] or 1
-            wtot = wtot + w
-            if not SA_rayBlocked(origin, pt.Position, ignore) then
-                wvis = wvis + w
-                if not best or w > (BODY_WEIGHT[bestName] or 1) then
-                    best, bestName = pt, n
-                end
+            totW = totW + w
+            if not SA_rayBlocked(origin, pt.Position, { tchar }) then
+                visW = visW + w
             end
         end
     end
-    local cov = wtot > 0 and (wvis / wtot) or 0
-    return wvis > 0, best, bestName, cov
+    if totW == 0 then return false, 0, math.huge end
+    local ratio = visW / totW
+    local visible = ratio >= SA.wallMin
+    local delta
+    if visible then
+        SA_lastSeen[tchar] = now
+        delta = 0
+    else
+        local last = SA_lastSeen[tchar]
+        delta = last and (now - last) or math.huge
+        if delta <= SA.wallGrace then visible = true end
+    end
+    return visible, ratio, delta
 end
-getgenv().WALL_CHECK = wall_check
-
-local function wall_check_head(targetChar, origin)
-    if not targetChar then return false end
-    local head = targetChar:FindFirstChild("Head")
-    if not head then return false end
-    origin = origin or (Cam and Cam.CFrame.Position)
-    if not origin then return false end
-    return not SA_rayBlocked(origin, head.Position, { targetChar })
-end
-getgenv().WALL_CHECK_HEAD = wall_check_head
 
 local function SA_targetScore(p, camPos, camLook)
     local c = p.Character
@@ -324,8 +300,8 @@ local function SA_targetScore(p, camPos, camLook)
     if occluded then score = score * 1.4 end
 
     if SA.wallCheck then
-        local vis, _, _, cov = wall_check(c, camPos)
-        if not vis or cov < SA.wallCheckCov then return math.huge end
+        local visible = SA_wallCheck(c, camPos)
+        if not visible then return math.huge end
     end
 
     return score
@@ -645,6 +621,12 @@ local function resolve()
     if SA.wb and SA_rayBlocked(muzzle, root.Position, { c, myChar }) and not SA_anyVisible(c, muzzle) then
         wbSpot = SA_findWbSpot(root, muzzle)
     end
+
+    if SA.wallCheck and not wbSpot then
+        local visible = SA_wallCheck(c, muzzle)
+        if not visible then return nil end
+    end
+
     if wbSpot and att then
         SA.wbTemp = { att = att, orig = att.WorldCFrame }
         pcall(function() att.WorldCFrame = CFrame.new(wbSpot) end)
@@ -1176,8 +1158,9 @@ task.spawn(function()
 end)
 
 -- ============================================================
--- [FLING]
+-- [FLING] — четыре режима, усиленная физика
 -- ============================================================
+
 local function flingSetup(hrp, hum2)
     local old = {}
     old.cf = hrp.CFrame
@@ -1822,10 +1805,6 @@ local function mkESP()
                     local col=Color3.fromRGB(60,255,120)
                     if r=="m" then col=Color3.fromRGB(255,60,60)
                     elseif r=="s" then col=Color3.fromRGB(60,140,255) end
-                    if SA.wallCheckEsp then
-                        local vis = wall_check_head(c, workspace.CurrentCamera.CFrame.Position)
-                        col = vis and Color3.fromRGB(60,255,120) or Color3.fromRGB(160,40,40)
-                    end
                     local h=c:FindFirstChild("sHL")
                     if not h then
                         h=Instance.new("Highlight")
@@ -2074,123 +2053,32 @@ local function killAll()
 end
 
 -- ============================================================
--- [HUD] KITI-style bottom pill
+-- [STATUS HELPERS] — для меню
 -- ============================================================
-local HUD = nil
-local function mkHUD()
-    if HUD and HUD.gui and HUD.gui.Parent then return end
-    HUD = { gui=nil, frames=0, acc=0, conn=nil, fpsL=nil, pingL=nil, hint=nil }
-
-    local g = Instance.new("ScreenGui")
-    g.Name = "StarWareHUD"
-    g.ResetOnSpawn = false
-    g.IgnoreGuiInset = true
-    g.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    g.DisplayOrder = 5
-    pcall(function() g.Parent = UI_PARENT end)
-    if not g.Parent then g.Parent = LP:WaitForChild("PlayerGui") end
-    HUD.gui = g
-
-    local pill = Instance.new("Frame")
-    pill.Name = "Pill"
-    pill.AnchorPoint = Vector2.new(0.5, 1)
-    pill.Position = UDim2.new(0.5, 0, 1, -14)
-    pill.Size = UDim2.new(0, 240, 0, 30)
-    pill.BackgroundColor3 = Color3.fromRGB(28, 20, 34)
-    pill.BackgroundTransparency = 0.12
-    pill.BorderSizePixel = 0
-    pill.Parent = g
-
-    local cr = Instance.new("UICorner", pill)
-    cr.CornerRadius = UDim.new(1, 0)
-
-    local st = Instance.new("UIStroke", pill)
-    st.Color = Color3.fromRGB(255, 175, 215)
-    st.Thickness = 1
-    st.Transparency = 0.55
-
-    local grad = Instance.new("UIGradient", pill)
-    grad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 200, 230)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 150, 255)),
-    })
-    grad.Rotation = 25
-
-    local function mk(name, x, w, align)
-        local l = Instance.new("TextLabel")
-        l.Name = name
-        l.BackgroundTransparency = 1
-        l.Position = UDim2.new(0, x, 0, 0)
-        l.Size = UDim2.new(0, w, 1, 0)
-        l.Font = Enum.Font.GothamMedium
-        l.TextSize = 13
-        l.TextColor3 = Color3.fromRGB(235, 225, 245)
-        l.TextXAlignment = align or Enum.TextXAlignment.Center
-        l.TextYAlignment = Enum.TextYAlignment.Center
-        l.Parent = pill
-        return l
+local function aimStatusString()
+    local tp = target_p and target_p.Name or "none"
+    local rtt = string.format("%.0fms", (EC.rtt or 0) * 1000)
+    local jit = string.format("%.0fms", (EC.jitter or 0) * 1000)
+    local ratio = "-"
+    if target_char then
+        local _, r = SA_wallCheck(target_char, Cam and Cam.CFrame.Position or Vector3.zero)
+        ratio = string.format("%.2f", r)
     end
-
-    HUD.fpsL  = mk("FPS",  8, 68, Enum.TextXAlignment.Left)
-    HUD.pingL = mk("Ping", 78, 68, Enum.TextXAlignment.Left)
-    HUD.fpsL.Text  = "0 fps"
-    HUD.pingL.Text = "0 ms"
-
-    local brand = mk("Brand", 148, 84, Enum.TextXAlignment.Right)
-    brand.Text = "StarWare"
-    brand.Font = Enum.Font.GothamBold
-    brand.TextColor3 = Color3.fromRGB(255, 195, 225)
-
-    local dot = Instance.new("Frame")
-    dot.Size = UDim2.new(0, 6, 0, 6)
-    dot.Position = UDim2.new(1, -8, 0.5, -3)
-    dot.AnchorPoint = Vector2.new(1, 0.5)
-    dot.BackgroundColor3 = Color3.fromRGB(255, 175, 215)
-    dot.BorderSizePixel = 0
-    dot.Parent = pill
-    local dc = Instance.new("UICorner", dot); dc.CornerRadius = UDim.new(1, 0)
-
-    local hint = Instance.new("TextLabel")
-    hint.AnchorPoint = Vector2.new(0.5, 1)
-    hint.Position = UDim2.new(0.5, 0, 1, -50)
-    hint.Size = UDim2.new(0, 220, 0, 14)
-    hint.BackgroundTransparency = 1
-    hint.Font = Enum.Font.Gotham
-    hint.TextSize = 11
-    hint.TextColor3 = Color3.fromRGB(180, 170, 200)
-    hint.TextTransparency = 0.4
-    hint.Text = "G to hide · tap ☰"
-    hint.Parent = g
-    HUD.hint = hint
-
-    HUD.conn = RS.RenderStepped:Connect(function(dt)
-        HUD.frames = HUD.frames + 1
-        HUD.acc = HUD.acc + dt
-        if HUD.acc >= 0.5 then
-            local fps = math.floor(HUD.frames / HUD.acc + 0.5)
-            HUD.frames, HUD.acc = 0, 0
-            HUD.fpsL.Text = fps .. " fps"
-            local ok, p = pcall(function()
-                return math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
-            end)
-            HUD.pingL.Text = (ok and p or 0) .. " ms"
-        end
-    end)
+    return string.format("target=%s  rtt=%s  jit=%s  vis=%s", tp, rtt, jit, ratio)
 end
 
-local function unloadHUD()
-    if HUD then
-        safe_disconnect(HUD.conn)
-        if HUD.gui then HUD.gui:Destroy() end
-        HUD = nil
-    end
+local function panicOff()
+    SA.enabled=false; KS.enabled=false; KA.on=false
+    TRACE.on=false; autograb_on=false; grab_desc_stop()
+    pcall(restore_wb)
+    MakeNotif("StarWare","Panic · aim/grab/trace off",2)
 end
 
 -- ============================================================
--- [MENU] Orion (Qanuir fork) · KITI-sidebar names
+-- [MENU] Orion (Qanuir fork)
 -- ============================================================
 local Window = OrionLib:MakeWindow({
-    Name = "StarWare v3.2",
+    Name = "StarWare v3",
     HidePremium = false,
     SaveConfig = false,
     ConfigFolder = "StarWare",
@@ -2199,23 +2087,9 @@ local Window = OrionLib:MakeWindow({
     Icon = "rbxassetid://4483345998",
 })
 
--- HOME
-local TabHome = Window:MakeTab({ Name = "Home", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabHome:AddSection({ Name = "| StarWare v3.2" })
-TabHome:AddParagraph({ Title = "Build", Content = "mobile · wall check · KITI skin · HUD" })
-TabHome:AddButton({ Name = "Unload StarWare", Callback = function() pcall(ADDON.unload) end })
-TabHome:AddButton({ Name = "Re-show Menu", Callback = function()
-    pcall(function()
-        for _, parent in ipairs({ UI_PARENT, game:GetService("CoreGui") }) do
-            local cg = parent:FindFirstChild("Orion")
-            if cg then cg.Enabled = true end
-        end
-    end)
-end })
-
--- TARGET
-local TabCombat = Window:MakeTab({ Name = "Target", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabCombat:AddSection({ Name = "| Silent Aim" })
+-- COMBAT
+local TabCombat = Window:MakeTab({ Name = "Combat", Icon = "rbxassetid://4483345998", PremiumOnly = false })
+TabCombat:AddSection({ Name = "Silent Aim" })
 TabCombat:AddToggle({ Name = "Silent Aim", Default = true, Callback = function(v)
     SA.enabled = v; if v then pcall(install_hooks) end
     MakeNotif("Silent Aim", v and "enabled" or "disabled", 2)
@@ -2227,32 +2101,27 @@ TabCombat:AddToggle({ Name = "Quiet Peek", Default = true, Callback = function(v
     SA.quiet = v; MakeNotif("Quiet Peek", v and "enabled" or "disabled", 2)
 end })
 
-TabCombat:AddSection({ Name = "| Wall Check" })
-TabCombat:AddToggle({ Name = "Wall Check (aim gate)", Default = false, Callback = function(v)
-    SA.wallCheck = v
-    MakeNotif("Wall Check", v and "aim gated on visibility" or "disabled", 2)
+TabCombat:AddSection({ Name = "Visibility" })
+TabCombat:AddToggle({ Name = "Wall Check", Default = true, Callback = function(v)
+    SA.wallCheck = v; MakeNotif("Wall Check", v and "enabled" or "disabled", 2)
 end })
-TabCombat:AddSlider({ Name = "Min Coverage", Min = 0.1, Max = 1.0, Default = 0.30, Increment = 0.05,
-    ValueName = "cov", Color = Color3.fromRGB(255, 175, 215),
-    Callback = function(v) SA.wallCheckCov = v end })
-TabCombat:AddToggle({ Name = "Wall Check ESP", Default = false, Callback = function(v)
-    SA.wallCheckEsp = v
-    MakeNotif("Wall Check ESP", v and "visible=green hidden=red" or "disabled", 2)
-end })
-TabCombat:AddButton({ Name = "Test Wall Check (nearest)", Callback = function()
-    local p = nearest_player()
-    if not p or not p.Character then MakeNotif("Wall Check", "no target", 2) return end
-    local vis, _, name, cov = wall_check(p.Character, workspace.CurrentCamera.CFrame.Position)
-    MakeNotif("Wall Check", string.format("%s · %s · cov %.2f",
-        p.Name, vis and "VISIBLE(" .. (name or "?") .. ")" or "BLOCKED", cov or 0), 3)
+TabCombat:AddSlider({ Name = "Wall Min Visible", Min = 0.05, Max = 0.75, Default = 0.25, Increment = 0.05,
+    ValueName = "ratio", Color = Color3.fromRGB(86,76,251),
+    Callback = function(v) SA.wallMin = v end })
+TabCombat:AddSlider({ Name = "Wall Grace", Min = 0.0, Max = 0.5, Default = 0.18, Increment = 0.02,
+    ValueName = "s", Color = Color3.fromRGB(86,76,251),
+    Callback = function(v) SA.wallGrace = v end })
+TabCombat:AddButton({ Name = "Clear Wall Cache", Callback = function()
+    for k in pairs(SA_lastSeen) do SA_lastSeen[k] = nil end
+    MakeNotif("Wall Check","cache cleared",2)
 end })
 
-TabCombat:AddSection({ Name = "| Intelligence" })
+TabCombat:AddSection({ Name = "Intelligence" })
 TabCombat:AddToggle({ Name = "Anti Spam-Jumper", Default = true, Callback = function(v)
     SA.antiJump = v; MakeNotif("Anti Jump", v and "enabled" or "disabled", 2)
 end })
 TabCombat:AddSlider({ Name = "Jump Radar", Min = 5, Max = 100, Default = 25, Increment = 1,
-    ValueName = "studs", Color = Color3.fromRGB(255, 175, 215),
+    ValueName = "studs", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) SA.jumpRadar = v end })
 TabCombat:AddToggle({ Name = "Auto Predict", Default = true, Callback = function(v)
     SA.autoPred = v; MakeNotif("Auto Predict", v and "enabled" or "disabled", 2)
@@ -2261,39 +2130,51 @@ TabCombat:AddToggle({ Name = "Best Moment", Default = true, Callback = function(
     SA.bestMoment = v; MakeNotif("Best Moment", v and "enabled" or "disabled", 2)
 end })
 TabCombat:AddSlider({ Name = "Confidence Floor", Min = 0.1, Max = 0.9, Default = 0.5, Increment = 0.05,
-    ValueName = "score", Color = Color3.fromRGB(255, 175, 215),
+    ValueName = "score", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) SA.confFloor = v end })
 TabCombat:AddSlider({ Name = "FOV", Min = 30, Max = 360, Default = 180, Increment = 5,
-    ValueName = "deg", Color = Color3.fromRGB(255, 175, 215),
+    ValueName = "deg", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) SA.fov = v end })
 TabCombat:AddSlider({ Name = "Angle Bias", Min = 0.0, Max = 1.0, Default = 0.4, Increment = 0.05,
-    ValueName = "coef", Color = Color3.fromRGB(255, 175, 215),
+    ValueName = "coef", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) SA.angleBias = v end })
 TabCombat:AddSlider({ Name = "Lateral Bias", Min = 1.0, Max = 2.5, Default = 1.6, Increment = 0.1,
-    ValueName = "x", Color = Color3.fromRGB(255, 175, 215),
+    ValueName = "x", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) SA.lateralBias = v end })
 TabCombat:AddSlider({ Name = "Switch Blend", Min = 0.0, Max = 1.0, Default = 0.35, Increment = 0.05,
-    ValueName = "coef", Color = Color3.fromRGB(255, 175, 215),
+    ValueName = "coef", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) SA.blend = v end })
 
+TabCombat:AddSection({ Name = "Aim Tools" })
 TabCombat:AddButton({ Name = "Switch Aim Part", Callback = function()
     SA.part = SA.part == "Torso" and "Head" or "Torso"
     MakeNotif("Aim Part", SA.part, 2)
 end })
+TabCombat:AddButton({ Name = "Clear Target Lock", Callback = function()
+    target_p=nil; target_char=nil; target_part=nil; target_hum=nil
+    SA_lock.lastChar=nil; SA_lock.lastPos=nil; SA_lock.blendT=0
+    table.clear(SA_hist); table.clear(SA_phase)
+    for k in pairs(SA_lastSeen) do SA_lastSeen[k] = nil end
+    MakeNotif("Aim","lock cleared",2)
+end })
+TabCombat:AddButton({ Name = "Print Aim Status", Callback = function()
+    MakeNotif("Aim Status", aimStatusString(), 4)
+end })
+TabCombat:AddButton({ Name = "PANIC (aim/grab/trace off)", Callback = function() panicOff() end })
 TabCombat:AddToggle({ Name = "Knife Silent", Default = false, Callback = function(v)
     KS.enabled = v; MakeNotif("Knife Silent", v and "enabled" or "disabled", 2)
 end })
 
-TabCombat:AddSection({ Name = "| Kill Aura" })
+TabCombat:AddSection({ Name = "Kill Aura" })
 TabCombat:AddToggle({ Name = "Kill Aura", Default = false, Callback = function(v)
     KA.on = v; MakeNotif("Kill Aura", v and "enabled" or "disabled", 2)
 end })
 TabCombat:AddSlider({ Name = "KA Distance", Min = 5, Max = 150, Default = 30, Increment = 1,
-    ValueName = "studs", Color = Color3.fromRGB(255, 175, 215),
+    ValueName = "studs", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) KA.dist = v end })
 TabCombat:AddButton({ Name = "Kill All", Callback = function() task.spawn(killAll) end })
 
-TabCombat:AddSection({ Name = "| Gun" })
+TabCombat:AddSection({ Name = "Gun" })
 TabCombat:AddToggle({ Name = "Auto Gun", Default = false, Callback = function(v)
     autograb_on = v
     if v then
@@ -2307,16 +2188,16 @@ TabCombat:AddToggle({ Name = "Auto Gun", Default = false, Callback = function(v)
     MakeNotif("Auto Gun", v and "enabled" or "disabled", 2)
 end })
 
--- GENERAL
-local TabMove = Window:MakeTab({ Name = "General", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabMove:AddSection({ Name = "| Walk" })
+-- MOVE
+local TabMove = Window:MakeTab({ Name = "Move", Icon = "rbxassetid://4483345998", PremiumOnly = false })
+TabMove:AddSection({ Name = "Walk" })
 TabMove:AddToggle({ Name = "Walkspeed", Default = false, Callback = function(v) MOVE.speedOn=v; applySpeed() end })
 TabMove:AddSlider({ Name = "Speed", Min = 1, Max = 500, Default = 50, Increment = 1,
-    ValueName = "studs/s", Color = Color3.fromRGB(255, 175, 215),
+    ValueName = "studs/s", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) MOVE.speed=v; applySpeed() end })
 TabMove:AddToggle({ Name = "JumpPower", Default = false, Callback = function(v) MOVE.jumpOn=v; applyJump() end })
 TabMove:AddSlider({ Name = "Jump Power", Min = 1, Max = 500, Default = 50, Increment = 1,
-    ValueName = "power", Color = Color3.fromRGB(255, 175, 215),
+    ValueName = "power", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) MOVE.jump=v; applyJump() end })
 TabMove:AddToggle({ Name = "Infinite Jump", Default = false, Callback = function(v)
     MOVE.infJump=v
@@ -2324,10 +2205,10 @@ TabMove:AddToggle({ Name = "Infinite Jump", Default = false, Callback = function
 end })
 TabMove:AddToggle({ Name = "HipHeight", Default = false, Callback = function(v) MOVE.hipOn=v; applyHip() end })
 TabMove:AddSlider({ Name = "Hip Height", Min = -5, Max = 50, Default = 2, Increment = 1,
-    ValueName = "studs", Color = Color3.fromRGB(255, 175, 215),
+    ValueName = "studs", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) MOVE.hip=v; applyHip() end })
 
-TabMove:AddSection({ Name = "| Fly" })
+TabMove:AddSection({ Name = "Fly" })
 TabMove:AddToggle({ Name = "Noclip", Default = false, Callback = function(v)
     MOVE.noclip=v
     if v then startNoclip() else stopNoclip() end
@@ -2337,20 +2218,20 @@ TabMove:AddToggle({ Name = "Fly", Default = false, Callback = function(v)
     if v then startFly() else stopFly() end
 end })
 TabMove:AddSlider({ Name = "Fly Speed", Min = 5, Max = 500, Default = 60, Increment = 5,
-    ValueName = "studs/s", Color = Color3.fromRGB(255, 175, 215),
+    ValueName = "studs/s", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) MOVE.flySpeed=v end })
 TabMove:AddToggle({ Name = "Spin", Default = false, Callback = function(v)
     MOVE.spin=v
     if v then startSpin() else stopSpin() end
 end })
 TabMove:AddSlider({ Name = "Spin Speed", Min = 30, Max = 3000, Default = 720, Increment = 30,
-    ValueName = "deg/s", Color = Color3.fromRGB(255, 175, 215),
+    ValueName = "deg/s", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) MOVE.spinSpeed=v end })
 
-TabMove:AddSection({ Name = "| World" })
+TabMove:AddSection({ Name = "World" })
 TabMove:AddToggle({ Name = "Custom Gravity", Default = false, Callback = function(v) MOVE.gravOn=v; applyGrav() end })
 TabMove:AddSlider({ Name = "Gravity", Min = 0, Max = 1000, Default = 196, Increment = 1,
-    ValueName = "g", Color = Color3.fromRGB(255, 175, 215),
+    ValueName = "g", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) MOVE.grav=v; applyGrav() end })
 TabMove:AddButton({ Name = "Reset Move", Callback = function() moveReset() end })
 TabMove:AddButton({ Name = "TP to Map", Callback = function()
@@ -2377,9 +2258,9 @@ TabMove:AddToggle({ Name = "Anti Fall", Default = false, Callback = function(v) 
 TabMove:AddToggle({ Name = "Anti Fling", Default = false, Callback = function(v) fl.antifling=v end })
 TabMove:AddToggle({ Name = "Ctrl+Click TP", Default = false, Callback = function(v) MOVE.ctrltp=v end })
 
--- FUN
-local TabTroll = Window:MakeTab({ Name = "Fun", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabTroll:AddSection({ Name = "| Fling" })
+-- TROLL
+local TabTroll = Window:MakeTab({ Name = "Troll", Icon = "rbxassetid://4483345998", PremiumOnly = false })
+TabTroll:AddSection({ Name = "Fling" })
 TabTroll:AddDropdown({
     Name = "Fling Mode",
     Default = "orbit",
@@ -2387,10 +2268,10 @@ TabTroll:AddDropdown({
     Callback = function(v) FLING.mode = v; MakeNotif("Fling Mode", v, 2) end,
 })
 TabTroll:AddSlider({ Name = "Fling Force", Min = 1e6, Max = 9e9, Default = 9e8, Increment = 1e7,
-    ValueName = "N", Color = Color3.fromRGB(255, 175, 215),
+    ValueName = "N", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) FLING.force = v end })
 TabTroll:AddSlider({ Name = "Fling Duration", Min = 0.5, Max = 5, Default = 2.2, Increment = 0.1,
-    ValueName = "s", Color = Color3.fromRGB(255, 175, 215),
+    ValueName = "s", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) FLING.duration = v end })
 
 TabTroll:AddButton({ Name = "Fling Nearest", Callback = function() flingNearest() end })
@@ -2409,7 +2290,7 @@ TabTroll:AddButton({ Name = "Fling Sheriff", Callback = function()
 end })
 TabTroll:AddButton({ Name = "Stop Troll", Callback = function() stopTroll() end })
 
-TabTroll:AddSection({ Name = "| Teleport" })
+TabTroll:AddSection({ Name = "Teleport" })
 TabTroll:AddButton({ Name = "TP to Murder", Callback = function()
     for _,p in ipairs(Players:GetPlayers()) do
         if p~=LP and alive(p) and cachedRole(p)=="m" then
@@ -2464,7 +2345,7 @@ local function rebuildEffect(key)
     if key=="bt"        and BT.on        then pcall(bt_destroy); pcall(bt_build) end
 end
 
-TabVisuals:AddSection({ Name = "| Character" })
+TabVisuals:AddSection({ Name = "Character" })
 
 TabVisuals:AddToggle({ Name = "Neon Trail", Default = false, Callback = function(v)
     fl.trail=v; if v then mkTrail() else clTrail() end
@@ -2491,7 +2372,7 @@ TabVisuals:AddToggle({ Name = "Rainbow Body", Default = false, Callback = functi
     fl.rainbow=v; if v then mkRB() else clRB() end
 end })
 
-TabVisuals:AddSection({ Name = "| Particles" })
+TabVisuals:AddSection({ Name = "Particles" })
 
 TabVisuals:AddToggle({ Name = "Aura Particles", Default = false, Callback = function(v)
     fl.parts=v; if v then mkParts() else clParts() end
@@ -2557,7 +2438,7 @@ TabVisuals:AddColorpicker({ Name = "Foot Color", Default = FC.foot, Callback = f
     FC.foot=c; rebuildEffect("foot")
 end })
 
-TabVisuals:AddSection({ Name = "| Effects" })
+TabVisuals:AddSection({ Name = "Effects" })
 
 TabVisuals:AddToggle({ Name = "Bullet Tracer", Default = false, Callback = function(v)
     TRACE.on=v; fl.tracer=v
@@ -2567,21 +2448,21 @@ TabVisuals:AddColorpicker({ Name = "Tracer Color", Default = FC.tracer, Callback
     FC.tracer=c
 end })
 
--- EMOTES
-local TabModel = Window:MakeTab({ Name = "Emotes", Icon = "rbxassetid://4483345998", PremiumOnly = false })
+-- MODEL
+local TabModel = Window:MakeTab({ Name = "Model", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 TabModel:AddToggle({ Name = "Headless", Default = false, Callback = function(v)
     fl.headless=v; pcall(applySkinAll)
 end })
 
--- SOUND
-local TabJump = Window:MakeTab({ Name = "Sound", Icon = "rbxassetid://4483345998", PremiumOnly = false })
+-- JUMP
+local TabJump = Window:MakeTab({ Name = "Jump", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 TabJump:AddToggle({ Name = "Jump Circles", Default = false, Callback = function(v)
     fl.jump=v; if v then mkJump() else clJump() end
 end })
 TabJump:AddColorpicker({ Name = "Jump Ring Color", Default = FC.jump, Callback = function(c)
     FC.jump=c; rebuildEffect("jump")
 end })
-TabJump:AddSection({ Name = "| Style" })
+TabJump:AddSection({ Name = "Style" })
 TabJump:AddButton({ Name = "Classic",        Callback = function() jStyle = "Classic"   end })
 TabJump:AddButton({ Name = "Double Ring",    Callback = function() jStyle = "Double"    end })
 TabJump:AddButton({ Name = "Triple Ripple",  Callback = function() jStyle = "Ripple"    end })
@@ -2598,7 +2479,7 @@ end })
 TabWorld:AddToggle({ Name = "FullBright", Default = false, Callback = function(v) fl.fb=v; if v then mkFB() else clFB() end end })
 TabWorld:AddToggle({ Name = "Skybox", Default = false, Callback = function(v) fl.sky=v; if v then mkSkybox() else clSkybox() end end })
 TabWorld:AddToggle({ Name = "Bloom", Default = false, Callback = function(v) fl.bloom=v; if v then mkBloom() else clBloom() end end })
-TabWorld:AddSection({ Name = "| Time" })
+TabWorld:AddSection({ Name = "Time" })
 TabWorld:AddButton({ Name = "Day",    Callback = function() applyTime("Day")    end })
 TabWorld:AddButton({ Name = "Sunset", Callback = function() applyTime("Sunset") end })
 TabWorld:AddButton({ Name = "Night",  Callback = function() applyTime("Night")  end })
@@ -2614,22 +2495,22 @@ TabEsp:AddToggle({ Name = "Role Tag (text)", Default = false, Callback = functio
     if not v then for pl in pairs(espTxtTags) do detachRoleTag(pl) end end
 end })
 
--- CONFIGS
-local TabTheme = Window:MakeTab({ Name = "Configs", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabTheme:AddSection({ Name = "| Menu Theme" })
+-- THEME
+local TabTheme = Window:MakeTab({ Name = "Theme", Icon = "rbxassetid://4483345998", PremiumOnly = false })
+TabTheme:AddSection({ Name = "Menu Theme" })
 TabTheme:AddColorpicker({
     Name = "Accent Color",
-    Default = Color3.fromRGB(255, 175, 215),
+    Default = Color3.fromRGB(86,76,251),
     Callback = function(c) pcall(function() OrionLib:ChangeColor("Accent", c) end) end
 })
 TabTheme:AddColorpicker({
     Name = "Background",
-    Default = Color3.fromRGB(30, 22, 36),
+    Default = Color3.fromRGB(26,32,58),
     Callback = function(c) pcall(function() OrionLib:ChangeColor("Background", c) end) end
 })
 TabTheme:AddColorpicker({
     Name = "Element",
-    Default = Color3.fromRGB(46, 34, 54),
+    Default = Color3.fromRGB(38,45,71),
     Callback = function(c) pcall(function() OrionLib:ChangeColor("Element", c) end) end
 })
 
@@ -2648,6 +2529,22 @@ TabExtra:AddButton({ Name = "Clear Particles", Callback = function()
     for _,p in ipairs(workspace:GetDescendants()) do
         if p:IsA("ParticleEmitter") then p:Destroy() end
     end
+end })
+
+TabExtra:AddSection({ Name = "Aim Diagnostics" })
+TabExtra:AddButton({ Name = "Print Aim Status", Callback = function()
+    MakeNotif("Aim Status", aimStatusString(), 4)
+end })
+TabExtra:AddButton({ Name = "Clear Wall Cache", Callback = function()
+    for k in pairs(SA_lastSeen) do SA_lastSeen[k] = nil end
+    MakeNotif("Wall Check","cache cleared",2)
+end })
+TabExtra:AddButton({ Name = "Clear Target Lock", Callback = function()
+    target_p=nil; target_char=nil; target_part=nil; target_hum=nil
+    SA_lock.lastChar=nil; SA_lock.lastPos=nil; SA_lock.blendT=0
+    table.clear(SA_hist); table.clear(SA_phase)
+    for k in pairs(SA_lastSeen) do SA_lastSeen[k] = nil end
+    MakeNotif("Aim","lock cleared",2)
 end })
 
 -- ============================================================
@@ -2770,142 +2667,6 @@ task.spawn(function()
 end)
 
 -- ============================================================
--- [MOBILE TOGGLE] тап-кнопка — открыть/закрыть Orion
--- ============================================================
-local MOBILE = { gui=nil, btn=nil, dragging=false, moved=false }
-
-local function find_orion_gui()
-    for _, parent in ipairs({ UI_PARENT, game:GetService("CoreGui") }) do
-        local ok, children = pcall(function() return parent:GetChildren() end)
-        if ok then
-            for _, gui in ipairs(children) do
-                if gui:IsA("ScreenGui") and (gui.Name == "Orion" or gui.Name:find("Orion")) then
-                    return gui
-                end
-            end
-        end
-    end
-    return nil
-end
-
-local function toggle_orion()
-    local g = find_orion_gui()
-    if g then
-        g.Enabled = not g.Enabled
-        if MOBILE.btn and MOBILE.btn:FindFirstChild("Icon") then
-            MOBILE.btn.Icon.Text = g.Enabled and "✕" or "☰"
-        end
-    else
-        pcall(function() OrionLib:Toggle() end)
-    end
-end
-
-local function mkMobileToggle()
-    if MOBILE.gui and MOBILE.gui.Parent then return end
-
-    local g = Instance.new("ScreenGui")
-    g.Name = "StarWareMobile"
-    g.ResetOnSpawn = false
-    g.IgnoreGuiInset = true
-    g.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    g.DisplayOrder = 100
-    pcall(function() g.Parent = UI_PARENT end)
-    if not g.Parent then g.Parent = LP:WaitForChild("PlayerGui") end
-    MOBILE.gui = g
-
-    local btn = Instance.new("TextButton")
-    btn.Name = "ToggleBtn"
-    btn.AnchorPoint = Vector2.new(0.5, 0.5)
-    btn.Position = UDim2.new(0, 60, 0.5, 0)
-    btn.Size = UDim2.new(0, 54, 0, 54)
-    btn.BackgroundColor3 = Color3.fromRGB(30, 22, 36)
-    btn.BackgroundTransparency = 0.15
-    btn.BorderSizePixel = 0
-    btn.Text = ""
-    btn.AutoButtonColor = false
-    btn.Active = true
-    btn.Parent = g
-    MOBILE.btn = btn
-
-    local c = Instance.new("UICorner", btn)
-    c.CornerRadius = UDim.new(1, 0)
-
-    local st = Instance.new("UIStroke", btn)
-    st.Color = Color3.fromRGB(255, 175, 215)
-    st.Thickness = 1.5
-    st.Transparency = 0.35
-
-    local grad = Instance.new("UIGradient", btn)
-    grad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 200, 230)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 150, 255)),
-    })
-    grad.Rotation = 45
-
-    local icon = Instance.new("TextLabel")
-    icon.Name = "Icon"
-    icon.BackgroundTransparency = 1
-    icon.Size = UDim2.new(1, 0, 1, 0)
-    icon.Font = Enum.Font.GothamBold
-    icon.TextSize = 24
-    icon.TextColor3 = Color3.fromRGB(255, 210, 240)
-    icon.Text = "☰"
-    icon.Parent = btn
-
-    local brand = Instance.new("TextLabel")
-    brand.Name = "Brand"
-    brand.BackgroundTransparency = 1
-    brand.AnchorPoint = Vector2.new(0, 1)
-    brand.Position = UDim2.new(0, 0, 1, -4)
-    brand.Size = UDim2.new(1, 0, 0, 12)
-    brand.Font = Enum.Font.GothamBold
-    brand.TextSize = 10
-    brand.TextColor3 = Color3.fromRGB(255, 195, 225)
-    brand.Text = "SW"
-    brand.Parent = btn
-
-    local startPos, startTime
-
-    btn.InputBegan:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.Touch
-        or inp.UserInputType == Enum.UserInputType.MouseButton1 then
-            MOBILE.dragging = true
-            MOBILE.moved = false
-            startPos = inp.Position
-            startTime = tick()
-            MOBILE.dragOrigin = btn.Position
-        end
-    end)
-
-    UIS.InputChanged:Connect(function(inp)
-        if not MOBILE.dragging then return end
-        if inp.UserInputType == Enum.UserInputType.Touch
-        or inp.UserInputType == Enum.UserInputType.MouseMovement then
-            local d = inp.Position - startPos
-            if d.Magnitude > 8 then MOBILE.moved = true end
-            if MOBILE.moved and MOBILE.dragOrigin then
-                btn.Position = UDim2.new(
-                    MOBILE.dragOrigin.X.Scale, MOBILE.dragOrigin.X.Offset + d.X,
-                    MOBILE.dragOrigin.Y.Scale, MOBILE.dragOrigin.Y.Offset + d.Y
-                )
-            end
-        end
-    end)
-
-    UIS.InputEnded:Connect(function(inp)
-        if not MOBILE.dragging then return end
-        if inp.UserInputType == Enum.UserInputType.Touch
-        or inp.UserInputType == Enum.UserInputType.MouseButton1 then
-            MOBILE.dragging = false
-            if not MOBILE.moved and (tick() - startTime) < 0.4 then
-                toggle_orion()
-            end
-            MOBILE.moved = false
-        end
-    end)
-end
-
--- ============================================================
 -- [UNLOAD]
 -- ============================================================
 ADDON.unload = function()
@@ -2937,40 +2698,14 @@ ADDON.unload = function()
         end
         WSH.hooked = nil; WSH.m = nil
     end
-    pcall(unloadHUD)
     pcall(function()
-        if MOBILE and MOBILE.gui then MOBILE.gui:Destroy() end
+        local cg = game.CoreGui:FindFirstChild("Orion")
+        if cg then cg:Destroy() end
     end)
-    pcall(function()
-        for _, parent in ipairs({ UI_PARENT, game:GetService("CoreGui") }) do
-            local ok, children = pcall(function() return parent:GetChildren() end)
-            if ok then
-                for _, cg in ipairs(children) do
-                    if cg:IsA("ScreenGui") and (cg.Name == "Orion" or cg.Name:find("Orion")) then
-                        cg:Destroy()
-                    end
-                end
-            end
-        end
-    end)
-    getgenv().WALL_CHECK = nil
-    getgenv().WALL_CHECK_HEAD = nil
     getgenv().UN_ADDON = nil
     print("[addon] unloaded")
 end
 
--- ============================================================
--- [BOOT]
--- ============================================================
 OrionLib:Init()
-pcall(mkHUD)
-pcall(mkMobileToggle)
-
-task.defer(function()
-    task.wait(0.5)
-    local g = find_orion_gui()
-    if g then g.Enabled = true end
-end)
-
-MakeNotif("StarWare", "Loaded · тап ☰ · KITI skin", 4)
-print("[addon] v3.2 ready — mobile · wall check · KITI HUD")
+MakeNotif("StarWare", "Loaded · right shift to hide menu", 4)
+print("[addon] v3 ready — Orion UI (Qanuir fork) · wall check wired")
