@@ -1,8 +1,8 @@
 --!nocheck
 --!nolint
 -- ============================================================
--- StarWare v3.1 · Orion UI (Qanuir fork) · KITI skin
--- wall check · aim FOV/angle/lateral · p90-rtt · двухпроходный лид · weighted head
+-- StarWare v3.2 · Orion UI (Qanuir fork) · KITI skin
+-- mobile-ready · wall check · aim FOV/angle/lateral · p90-rtt
 -- fling: orbit · slam · spin · anchor-break
 -- ============================================================
 if getgenv().UN_ADDON and getgenv().UN_ADDON.loaded then
@@ -27,9 +27,27 @@ end
 local Cam        = workspace.CurrentCamera
 
 -- ============================================================
+-- [UI PARENT] desktop → CoreGui, mobile → gethui/HiddenRoot
+-- ============================================================
+local function get_ui_parent()
+    local ok, hui = pcall(function() return gethui() end)
+    if ok and hui then return hui end
+    local ok2, hui2 = pcall(function()
+        return game:GetService("CoreGui")
+    end)
+    if ok2 and hui2 then return hui2 end
+    return LP:WaitForChild("PlayerGui")
+end
+local UI_PARENT = get_ui_parent()
+
+-- ============================================================
 -- [UI] Orion loader (Qanuir fork) + KITI palette
 -- ============================================================
 local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/Qanuir/orion-ui/refs/heads/main/source.lua'))()
+
+if type(OrionLib) == "table" then
+    pcall(function() OrionLib.ScreenGuiParent = UI_PARENT end)
+end
 
 pcall(function() OrionLib:ChangeColor("Accent",     Color3.fromRGB(255, 175, 215)) end)
 pcall(function() OrionLib:ChangeColor("Background", Color3.fromRGB(30, 22, 36))    end)
@@ -237,7 +255,7 @@ local function SA_anyVisible(targetChar, origin)
 end
 
 -- ============================================================
--- [WALL CHECK] first-class visibility gate — reuse everywhere
+-- [WALL CHECK]
 -- ============================================================
 local function wall_check(targetChar, origin, ignoreExtra)
     if not targetChar or not targetChar.Parent then return false end
@@ -2069,7 +2087,8 @@ local function mkHUD()
     g.IgnoreGuiInset = true
     g.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     g.DisplayOrder = 5
-    g.Parent = game.CoreGui
+    pcall(function() g.Parent = UI_PARENT end)
+    if not g.Parent then g.Parent = LP:WaitForChild("PlayerGui") end
     HUD.gui = g
 
     local pill = Instance.new("Frame")
@@ -2140,7 +2159,7 @@ local function mkHUD()
     hint.TextSize = 11
     hint.TextColor3 = Color3.fromRGB(180, 170, 200)
     hint.TextTransparency = 0.4
-    hint.Text = "G to hide"
+    hint.Text = "G to hide · tap ☰"
     hint.Parent = g
     HUD.hint = hint
 
@@ -2171,7 +2190,7 @@ end
 -- [MENU] Orion (Qanuir fork) · KITI-sidebar names
 -- ============================================================
 local Window = OrionLib:MakeWindow({
-    Name = "StarWare v3.1",
+    Name = "StarWare v3.2",
     HidePremium = false,
     SaveConfig = false,
     ConfigFolder = "StarWare",
@@ -2182,17 +2201,19 @@ local Window = OrionLib:MakeWindow({
 
 -- HOME
 local TabHome = Window:MakeTab({ Name = "Home", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabHome:AddSection({ Name = "| StarWare v3.1" })
-TabHome:AddParagraph({ Title = "Build", Content = "wall check · KITI skin · HUD" })
+TabHome:AddSection({ Name = "| StarWare v3.2" })
+TabHome:AddParagraph({ Title = "Build", Content = "mobile · wall check · KITI skin · HUD" })
 TabHome:AddButton({ Name = "Unload StarWare", Callback = function() pcall(ADDON.unload) end })
 TabHome:AddButton({ Name = "Re-show Menu", Callback = function()
     pcall(function()
-        local cg = game.CoreGui:FindFirstChild("Orion")
-        if cg then cg.Enabled = true end
+        for _, parent in ipairs({ UI_PARENT, game:GetService("CoreGui") }) do
+            local cg = parent:FindFirstChild("Orion")
+            if cg then cg.Enabled = true end
+        end
     end)
 end })
 
--- TARGET (combat)
+-- TARGET
 local TabCombat = Window:MakeTab({ Name = "Target", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 TabCombat:AddSection({ Name = "| Silent Aim" })
 TabCombat:AddToggle({ Name = "Silent Aim", Default = true, Callback = function(v)
@@ -2286,7 +2307,7 @@ TabCombat:AddToggle({ Name = "Auto Gun", Default = false, Callback = function(v)
     MakeNotif("Auto Gun", v and "enabled" or "disabled", 2)
 end })
 
--- GENERAL (move)
+-- GENERAL
 local TabMove = Window:MakeTab({ Name = "General", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 TabMove:AddSection({ Name = "| Walk" })
 TabMove:AddToggle({ Name = "Walkspeed", Default = false, Callback = function(v) MOVE.speedOn=v; applySpeed() end })
@@ -2356,7 +2377,7 @@ TabMove:AddToggle({ Name = "Anti Fall", Default = false, Callback = function(v) 
 TabMove:AddToggle({ Name = "Anti Fling", Default = false, Callback = function(v) fl.antifling=v end })
 TabMove:AddToggle({ Name = "Ctrl+Click TP", Default = false, Callback = function(v) MOVE.ctrltp=v end })
 
--- FUN (troll)
+-- FUN
 local TabTroll = Window:MakeTab({ Name = "Fun", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 TabTroll:AddSection({ Name = "| Fling" })
 TabTroll:AddDropdown({
@@ -2546,13 +2567,13 @@ TabVisuals:AddColorpicker({ Name = "Tracer Color", Default = FC.tracer, Callback
     FC.tracer=c
 end })
 
--- EMOTES (skin)
+-- EMOTES
 local TabModel = Window:MakeTab({ Name = "Emotes", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 TabModel:AddToggle({ Name = "Headless", Default = false, Callback = function(v)
     fl.headless=v; pcall(applySkinAll)
 end })
 
--- SOUND (jump)
+-- SOUND
 local TabJump = Window:MakeTab({ Name = "Sound", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 TabJump:AddToggle({ Name = "Jump Circles", Default = false, Callback = function(v)
     fl.jump=v; if v then mkJump() else clJump() end
@@ -2593,7 +2614,7 @@ TabEsp:AddToggle({ Name = "Role Tag (text)", Default = false, Callback = functio
     if not v then for pl in pairs(espTxtTags) do detachRoleTag(pl) end end
 end })
 
--- CONFIGS (theme)
+-- CONFIGS
 local TabTheme = Window:MakeTab({ Name = "Configs", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 TabTheme:AddSection({ Name = "| Menu Theme" })
 TabTheme:AddColorpicker({
@@ -2749,6 +2770,142 @@ task.spawn(function()
 end)
 
 -- ============================================================
+-- [MOBILE TOGGLE] тап-кнопка — открыть/закрыть Orion
+-- ============================================================
+local MOBILE = { gui=nil, btn=nil, dragging=false, moved=false }
+
+local function find_orion_gui()
+    for _, parent in ipairs({ UI_PARENT, game:GetService("CoreGui") }) do
+        local ok, children = pcall(function() return parent:GetChildren() end)
+        if ok then
+            for _, gui in ipairs(children) do
+                if gui:IsA("ScreenGui") and (gui.Name == "Orion" or gui.Name:find("Orion")) then
+                    return gui
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function toggle_orion()
+    local g = find_orion_gui()
+    if g then
+        g.Enabled = not g.Enabled
+        if MOBILE.btn and MOBILE.btn:FindFirstChild("Icon") then
+            MOBILE.btn.Icon.Text = g.Enabled and "✕" or "☰"
+        end
+    else
+        pcall(function() OrionLib:Toggle() end)
+    end
+end
+
+local function mkMobileToggle()
+    if MOBILE.gui and MOBILE.gui.Parent then return end
+
+    local g = Instance.new("ScreenGui")
+    g.Name = "StarWareMobile"
+    g.ResetOnSpawn = false
+    g.IgnoreGuiInset = true
+    g.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    g.DisplayOrder = 100
+    pcall(function() g.Parent = UI_PARENT end)
+    if not g.Parent then g.Parent = LP:WaitForChild("PlayerGui") end
+    MOBILE.gui = g
+
+    local btn = Instance.new("TextButton")
+    btn.Name = "ToggleBtn"
+    btn.AnchorPoint = Vector2.new(0.5, 0.5)
+    btn.Position = UDim2.new(0, 60, 0.5, 0)
+    btn.Size = UDim2.new(0, 54, 0, 54)
+    btn.BackgroundColor3 = Color3.fromRGB(30, 22, 36)
+    btn.BackgroundTransparency = 0.15
+    btn.BorderSizePixel = 0
+    btn.Text = ""
+    btn.AutoButtonColor = false
+    btn.Active = true
+    btn.Parent = g
+    MOBILE.btn = btn
+
+    local c = Instance.new("UICorner", btn)
+    c.CornerRadius = UDim.new(1, 0)
+
+    local st = Instance.new("UIStroke", btn)
+    st.Color = Color3.fromRGB(255, 175, 215)
+    st.Thickness = 1.5
+    st.Transparency = 0.35
+
+    local grad = Instance.new("UIGradient", btn)
+    grad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 200, 230)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 150, 255)),
+    })
+    grad.Rotation = 45
+
+    local icon = Instance.new("TextLabel")
+    icon.Name = "Icon"
+    icon.BackgroundTransparency = 1
+    icon.Size = UDim2.new(1, 0, 1, 0)
+    icon.Font = Enum.Font.GothamBold
+    icon.TextSize = 24
+    icon.TextColor3 = Color3.fromRGB(255, 210, 240)
+    icon.Text = "☰"
+    icon.Parent = btn
+
+    local brand = Instance.new("TextLabel")
+    brand.Name = "Brand"
+    brand.BackgroundTransparency = 1
+    brand.AnchorPoint = Vector2.new(0, 1)
+    brand.Position = UDim2.new(0, 0, 1, -4)
+    brand.Size = UDim2.new(1, 0, 0, 12)
+    brand.Font = Enum.Font.GothamBold
+    brand.TextSize = 10
+    brand.TextColor3 = Color3.fromRGB(255, 195, 225)
+    brand.Text = "SW"
+    brand.Parent = btn
+
+    local startPos, startTime
+
+    btn.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.Touch
+        or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+            MOBILE.dragging = true
+            MOBILE.moved = false
+            startPos = inp.Position
+            startTime = tick()
+            MOBILE.dragOrigin = btn.Position
+        end
+    end)
+
+    UIS.InputChanged:Connect(function(inp)
+        if not MOBILE.dragging then return end
+        if inp.UserInputType == Enum.UserInputType.Touch
+        or inp.UserInputType == Enum.UserInputType.MouseMovement then
+            local d = inp.Position - startPos
+            if d.Magnitude > 8 then MOBILE.moved = true end
+            if MOBILE.moved and MOBILE.dragOrigin then
+                btn.Position = UDim2.new(
+                    MOBILE.dragOrigin.X.Scale, MOBILE.dragOrigin.X.Offset + d.X,
+                    MOBILE.dragOrigin.Y.Scale, MOBILE.dragOrigin.Y.Offset + d.Y
+                )
+            end
+        end
+    end)
+
+    UIS.InputEnded:Connect(function(inp)
+        if not MOBILE.dragging then return end
+        if inp.UserInputType == Enum.UserInputType.Touch
+        or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+            MOBILE.dragging = false
+            if not MOBILE.moved and (tick() - startTime) < 0.4 then
+                toggle_orion()
+            end
+            MOBILE.moved = false
+        end
+    end)
+end
+
+-- ============================================================
 -- [UNLOAD]
 -- ============================================================
 ADDON.unload = function()
@@ -2782,8 +2939,19 @@ ADDON.unload = function()
     end
     pcall(unloadHUD)
     pcall(function()
-        local cg = game.CoreGui:FindFirstChild("Orion")
-        if cg then cg:Destroy() end
+        if MOBILE and MOBILE.gui then MOBILE.gui:Destroy() end
+    end)
+    pcall(function()
+        for _, parent in ipairs({ UI_PARENT, game:GetService("CoreGui") }) do
+            local ok, children = pcall(function() return parent:GetChildren() end)
+            if ok then
+                for _, cg in ipairs(children) do
+                    if cg:IsA("ScreenGui") and (cg.Name == "Orion" or cg.Name:find("Orion")) then
+                        cg:Destroy()
+                    end
+                end
+            end
+        end
     end)
     getgenv().WALL_CHECK = nil
     getgenv().WALL_CHECK_HEAD = nil
@@ -2791,7 +2959,18 @@ ADDON.unload = function()
     print("[addon] unloaded")
 end
 
+-- ============================================================
+-- [BOOT]
+-- ============================================================
 OrionLib:Init()
 pcall(mkHUD)
-MakeNotif("StarWare", "Loaded · G to hide · KITI skin", 4)
-print("[addon] v3.1 ready — wall check + KITI HUD")
+pcall(mkMobileToggle)
+
+task.defer(function()
+    task.wait(0.5)
+    local g = find_orion_gui()
+    if g then g.Enabled = true end
+end)
+
+MakeNotif("StarWare", "Loaded · тап ☰ · KITI skin", 4)
+print("[addon] v3.2 ready — mobile · wall check · KITI HUD")
