@@ -82,9 +82,8 @@ local moveConns = { infJump=nil, noclip=nil, nc={} }
 local flyConn, spinConn
 local antiJumpConn = nil
 
--- fling config
 local FLING = {
-    mode = "orbit",         -- orbit | slam | spin | anchor
+    mode = "orbit",
     force = 9e8,
     duration = 2.2,
     active = false,
@@ -243,6 +242,9 @@ local SA_lastSeen = setmetatable({}, {__mode = "k"})
 
 local function SA_wallCheck(tchar, origin)
     if not tchar then return false, 0, math.huge end
+    local ignore = { tchar }
+    local myChar = LP.Character
+    if myChar and myChar ~= tchar then table.insert(ignore, myChar) end
     local now = os.clock()
     local visW, totW = 0, 0
     for _, n in ipairs(SA_BODY) do
@@ -250,7 +252,7 @@ local function SA_wallCheck(tchar, origin)
         if pt and pt:IsA("BasePart") then
             local w = BODY_WEIGHT[n] or 1
             totW = totW + w
-            if not SA_rayBlocked(origin, pt.Position, { tchar }) then
+            if not SA_rayBlocked(origin, pt.Position, ignore) then
                 visW = visW + w
             end
         end
@@ -294,7 +296,9 @@ local function SA_targetScore(p, camPos, camLook)
         else jumpMul = 0.6 end
     end
 
-    local occluded = SA_rayBlocked(camPos, head.Position, { c })
+    local ignore = { c }
+    if LP.Character then table.insert(ignore, LP.Character) end
+    local occluded = SA_rayBlocked(camPos, head.Position, ignore)
     local anglePenalty = 1 + (angle / math.max(SA.fov, 1)) * SA.angleBias * 4
     local score = dist * anglePenalty * jumpMul
     if occluded then score = score * 1.4 end
@@ -510,13 +514,17 @@ local function SA_confidence(c, hum2, root, muzzle)
         s = s * SA_jumpScore(hum2, root)
     end
 
+    local myChar = LP.Character
+    local ignore = { c }
+    if myChar then table.insert(ignore, myChar) end
+
     local wvis, wtot = 0, 0
     for _, n in ipairs(SA_BODY) do
         local pt = c:FindFirstChild(n)
         if pt and pt:IsA("BasePart") then
             local w = BODY_WEIGHT[n] or 1
             wtot = wtot + w
-            if not SA_rayBlocked(muzzle, pt.Position, { c }) then
+            if not SA_rayBlocked(muzzle, pt.Position, ignore) then
                 wvis = wvis + w
             end
         end
@@ -1158,9 +1166,8 @@ task.spawn(function()
 end)
 
 -- ============================================================
--- [FLING] — четыре режима, усиленная физика
+-- [FLING]
 -- ============================================================
-
 local function flingSetup(hrp, hum2)
     local old = {}
     old.cf = hrp.CFrame
@@ -2053,7 +2060,7 @@ local function killAll()
 end
 
 -- ============================================================
--- [STATUS HELPERS] — для меню
+-- [STATUS HELPERS]
 -- ============================================================
 local function aimStatusString()
     local tp = target_p and target_p.Name or "none"
@@ -2708,4 +2715,4 @@ end
 
 OrionLib:Init()
 MakeNotif("StarWare", "Loaded · right shift to hide menu", 4)
-print("[addon] v3 ready — Orion UI (Qanuir fork) · wall check wired")
+print("[addon] v3 ready — Orion UI (Qanuir fork) · wall check wired · own-char ignored")
