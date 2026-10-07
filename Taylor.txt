@@ -1,10 +1,5 @@
 --!nocheck
 --!nolint
--- ============================================================
--- StarWare v3 · Orion UI (Qanuir fork)
--- aim: FOV · angle-bias · lateral-bias · p90-rtt · двухпроходный лид · weighted head
--- fling: orbit · slam · spin · anchor-break
--- ============================================================
 if getgenv().UN_ADDON and getgenv().UN_ADDON.loaded then
     pcall(function() getgenv().UN_ADDON.unload() end)
 end
@@ -16,42 +11,16 @@ local RS         = game:GetService("RunService")
 local Replicated = game:GetService("ReplicatedStorage")
 local Stats      = game:GetService("Stats")
 local UIS        = game:GetService("UserInputService")
-local Tween      = game:GetService("TweenService")
-local HS         = game:GetService("HttpService")
 local L          = game:GetService("Lighting")
 local LP         = Players.LocalPlayer
 if not LP then
     Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
     LP = Players.LocalPlayer
 end
-local Cam        = workspace.CurrentCamera
+local Cam = workspace.CurrentCamera
 
--- ============================================================
--- [UI] Orion loader (Qanuir fork)
--- ============================================================
-local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/Qanuir/orion-ui/refs/heads/main/source.lua'))()
-
-local function MakeNotif(name, content, dur)
-    pcall(function()
-        OrionLib:MakeNotification({
-            Name = name or "StarWare",
-            Content = content or "",
-            Time = dur or 3,
-        })
-    end)
-end
-
--- ============================================================
--- [HELPERS]
--- ============================================================
-local function safe_destroy(inst)
-    if inst and typeof(inst)=="Instance" and inst.Parent then
-        pcall(function() inst:Destroy() end)
-    end
-end
-local function safe_disconnect(conn)
-    if conn then pcall(function() conn:Disconnect() end) end
-end
+local function safe_destroy(i) if i and typeof(i)=="Instance" and i.Parent then pcall(function() i:Destroy() end) end end
+local function safe_disconnect(c) if c then pcall(function() c:Disconnect() end) end end
 
 -- ============================================================
 -- [STATE]
@@ -59,7 +28,6 @@ end
 local SA = { enabled=true, part="Torso", quiet=true, wb=true, wbTemp=nil, antiJump=true,
     autoPred=true, bestMoment=true, jumpRadar=25, confFloor=0.5,
     fov=180, angleBias=0.4, lateralBias=1.6, blend=0.35 }
-
 local SA_hist = {}
 local SA_phase = {}
 local SA_lock = { lastChar=nil, blendT=0, lastPos=nil }
@@ -75,19 +43,17 @@ local grab_desc_conn=nil
 
 local MOVE = { speedOn=false, speed=50, jumpOn=false, jump=50, hipOn=false, hip=2,
     infJump=false, noclip=false, fly=false, flySpeed=60, fg=nil, fv=nil,
-    gravOn=false, grav=196.2, spin=false, spinSpeed=720, antiFall=false, ctrltp=false,
-    antiJumpPush=false, antiJumpRad=25 }
+    gravOn=false, grav=196.2, spin=false, spinSpeed=720, antiFall=false, ctrltp=false }
 local moveConns = { infJump=nil, noclip=nil, nc={} }
 local flyConn, spinConn
-local antiJumpConn = nil
+local antiJumpConn
 
--- fling config
-local FLING = {
-    mode = "orbit",         -- orbit | slam | spin | anchor
-    force = 9e8,
-    duration = 2.2,
-    active = false,
-}
+local FLING = { mode="orbit", force=9e8, duration=2.2, active=false }
+
+-- WALL CHECK
+local WC = { on=false, blockedColor=Color3.fromRGB(255,60,60), visColor=Color3.fromRGB(60,255,60),
+    showVis=true, showBlocked=true, depth="always" }
+local wcConn = nil
 
 local TROLL = { flinging=false }
 
@@ -103,8 +69,7 @@ FC.bt = Color3.fromRGB(170,100,255)
 
 local SZ = { trail=1.5, parts=1.6, hat=1.4, foot=2.2, jump=4, bounce=0.5,
     orbAura=2.5, lightning=0.7, snow=1.2, glow=0.3, tracer=0.15,
-    esp=0.5, ghost=0.3, atmo=0.35, rainbow=0.4, skyDust=1.5, bloom=1.4,
-    bt=0.3 }
+    esp=0.5, ghost=0.3, atmo=0.35, rainbow=0.4, skyDust=1.5, bloom=1.4, bt=0.3 }
 
 local SID = "rbxassetid://159454299"
 local HEART_MESH = "rbxassetid://6200353"
@@ -148,7 +113,6 @@ local function refreshRoleCache()
     end
     roleCache=new
 end
-
 local function alive(p)
     local c=p.Character; if not c then return false end
     local h=c:FindFirstChildOfClass("Humanoid")
@@ -172,7 +136,6 @@ local function cachedRole(pl)
     if c=="Sheriff" or c=="Hero" then return "s" end
     return getRole(pl)
 end
-
 local function hum() local c=LP.Character; return c and c:FindFirstChildOfClass("Humanoid") end
 local function HRP() local c=LP.Character; return c and c:FindFirstChild("HumanoidRootPart") end
 local function UP()  local c=LP.Character; return c and (c:FindFirstChild("UpperTorso") or c:FindFirstChild("Torso")) end
@@ -186,16 +149,11 @@ local rp=RaycastParams.new()
 rp.FilterType=Enum.RaycastFilterType.Exclude
 local EC={ rtt=0, jitter=0, seen=false }
 local EC_samples = {}
-
-local function push_rtt(v)
-    table.insert(EC_samples, v)
-    if #EC_samples > 12 then table.remove(EC_samples, 1) end
-end
+local function push_rtt(v) table.insert(EC_samples, v); if #EC_samples>12 then table.remove(EC_samples,1) end end
 local function rtt_p90()
-    if #EC_samples == 0 then return EC.rtt end
-    local s = table.clone(EC_samples)
-    table.sort(s)
-    return s[math.max(1, math.floor(#s * 0.9))]
+    if #EC_samples==0 then return EC.rtt end
+    local s=table.clone(EC_samples); table.sort(s)
+    return s[math.max(1, math.floor(#s*0.9))]
 end
 
 local function SA_rayBlocked(a, b, ignore)
@@ -208,23 +166,15 @@ local function SA_rayBlocked(a, b, ignore)
         local hit = workspace:Raycast(a, b - a, p)
         if not hit then return false end
         local i = hit.Instance
-        if i.Transparency >= 0.9 or not i.CanCollide then
-            table.insert(list, i)
-        else
-            return true
-        end
+        if i.Transparency >= 0.9 or not i.CanCollide then table.insert(list, i)
+        else return true end
     end
     return true
 end
 
-local SA_BODY = { "UpperTorso", "Torso", "LowerTorso", "Head", "HumanoidRootPart",
-    "RightUpperArm", "LeftUpperArm", "Right Arm", "Left Arm" }
-
-local BODY_WEIGHT = {
-    Head=3.0, UpperTorso=1.5, Torso=1.5, LowerTorso=1.0,
-    HumanoidRootPart=0.5, RightUpperArm=0.6, LeftUpperArm=0.6,
-    ["Right Arm"]=0.6, ["Left Arm"]=0.6,
-}
+local SA_BODY = { "UpperTorso","Torso","LowerTorso","Head","HumanoidRootPart","RightUpperArm","LeftUpperArm","Right Arm","Left Arm" }
+local BODY_WEIGHT = { Head=3.0,UpperTorso=1.5,Torso=1.5,LowerTorso=1.0,HumanoidRootPart=0.5,
+    RightUpperArm=0.6,LeftUpperArm=0.6,["Right Arm"]=0.6,["Left Arm"]=0.6 }
 
 local function SA_anyVisible(targetChar, origin)
     for _, n in ipairs(SA_BODY) do
@@ -237,20 +187,15 @@ local function SA_anyVisible(targetChar, origin)
 end
 
 local function SA_targetScore(p, camPos, camLook)
-    local c = p.Character
-    if not c then return math.huge end
+    local c = p.Character; if not c then return math.huge end
     local head = c:FindFirstChild("Head")
     local hrp  = c:FindFirstChild("HumanoidRootPart")
     local h    = c:FindFirstChildOfClass("Humanoid")
     if not head or not hrp or not h then return math.huge end
-
     local toHead = head.Position - camPos
-    local dist = toHead.Magnitude
-    if dist < 0.5 then dist = 0.5 end
-
+    local dist = math.max(0.5, toHead.Magnitude)
     local angle = math.deg(math.acos(math.clamp(camLook:Dot(toHead.Unit), -1, 1)))
     if angle > SA.fov * 0.5 then return math.huge end
-
     local jumpMul = 1
     if SA.antiJump and h.FloorMaterial == Enum.Material.Air then
         local vy = hrp.AssemblyLinearVelocity.Y
@@ -259,12 +204,10 @@ local function SA_targetScore(p, camPos, camLook)
         elseif vy > -25 then jumpMul = 0.85
         else jumpMul = 0.6 end
     end
-
     local occluded = SA_rayBlocked(camPos, head.Position, { c })
     local anglePenalty = 1 + (angle / math.max(SA.fov, 1)) * SA.angleBias * 4
     local score = dist * anglePenalty * jumpMul
     if occluded then score = score * 1.4 end
-
     return score
 end
 
@@ -272,8 +215,7 @@ local function refresh_target()
     refreshRoleCache()
     if not Cam then Cam = workspace.CurrentCamera end
     if not Cam then return end
-
-    local camPos  = Cam.CFrame.Position
+    local camPos = Cam.CFrame.Position
     local camLook = Cam.CFrame.LookVector
 
     if target_p and target_p.Character then
@@ -303,8 +245,7 @@ local function refresh_target()
 
     if best ~= target_p then
         if SA_lock.lastChar ~= best then
-            SA_lock.lastChar = best
-            SA_lock.blendT = 1.0
+            SA_lock.lastChar = best; SA_lock.blendT = 1.0
         end
         target_p = best; target_char, target_part, target_hum = nil, nil, nil
     end
@@ -313,8 +254,7 @@ local function refresh_target()
     if c ~= target_char then target_char = c; target_part, target_hum = nil, nil end
     if not c then return end
     if not target_part or not target_part.Parent then
-        target_part = c:FindFirstChild("HumanoidRootPart")
-            or c:FindFirstChild("UpperTorso") or c:FindFirstChild("Torso")
+        target_part = c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("UpperTorso") or c:FindFirstChild("Torso")
     end
     if not target_hum or not target_hum.Parent then
         target_hum = c:FindFirstChildOfClass("Humanoid")
@@ -344,9 +284,7 @@ local function sample_ping()
     if EC.seen then
         EC.rtt = EC.rtt * 0.85 + rtt * 0.15
         EC.jitter = EC.jitter * 0.8 + math.abs(rtt - EC.rtt) * 0.2
-    else
-        EC.rtt = rtt; EC.seen = true
-    end
+    else EC.rtt = rtt; EC.seen = true end
 end
 
 -- ============================================================
@@ -362,16 +300,10 @@ task.spawn(function()
                 local list = SA_hist[h] or {}
                 SA_hist[h] = list
                 table.insert(list, { os.clock(), h.Position })
-                while #list > 5 and os.clock() - list[1][1] > 0.5 do
-                    table.remove(list, 1)
-                end
+                while #list > 5 and os.clock() - list[1][1] > 0.5 do table.remove(list, 1) end
             end
-            for k in pairs(SA_hist) do
-                if not k.Parent then SA_hist[k] = nil end
-            end
-        else
-            table.clear(SA_hist)
-        end
+            for k in pairs(SA_hist) do if not k.Parent then SA_hist[k] = nil end end
+        else table.clear(SA_hist) end
     end
 end)
 
@@ -384,21 +316,13 @@ local function SA_getVel(root)
         local a, b = list[i-1], list[i]
         local dt = b[1] - a[1]
         if dt > 0.005 and dt < 0.3 then
-            samples[#samples+1] = {
-                vx = (b[2].X - a[2].X) / dt,
-                vy = (b[2].Y - a[2].Y) / dt,
-                vz = (b[2].Z - a[2].Z) / dt,
-                w  = (i / N) * (1 / dt),
-            }
+            samples[#samples+1] = { vx=(b[2].X-a[2].X)/dt, vy=(b[2].Y-a[2].Y)/dt, vz=(b[2].Z-a[2].Z)/dt, w=(i/N)*(1/dt) }
         end
     end
     if #samples == 0 then return root.AssemblyLinearVelocity end
     local vx, vy, vz, w = 0, 0, 0, 0
     for _, s in ipairs(samples) do
-        vx = vx + s.vx * s.w
-        vy = vy + s.vy * s.w
-        vz = vz + s.vz * s.w
-        w = w + s.w
+        vx = vx + s.vx * s.w; vy = vy + s.vy * s.w; vz = vz + s.vz * s.w; w = w + s.w
     end
     if w <= 0 then return root.AssemblyLinearVelocity end
     local v = Vector3.new(vx/w, vy/w, vz/w)
@@ -409,10 +333,7 @@ end
 local function SA_jumpScore(hum2, root)
     if not hum2 or not root then return 1 end
     local st = hum2:GetState()
-    if st ~= Enum.HumanoidStateType.Jumping
-    and st ~= Enum.HumanoidStateType.Freefall then
-        return 1.0
-    end
+    if st ~= Enum.HumanoidStateType.Jumping and st ~= Enum.HumanoidStateType.Freefall then return 1.0 end
     local vy = root.AssemblyLinearVelocity.Y
     if vy > 8 then return 0.35
     elseif vy > 0 then return 0.6
@@ -425,21 +346,15 @@ local function SA_predict(hum2, root, lead, aimHint)
         local v = SA_getVel(root)
         return Vector3.new(v.X * lead, math.clamp(v.Y * lead, -3, 3), v.Z * lead)
     end
-
     local vPhys = root.AssemblyLinearVelocity
     local md = hum2 and hum2.MoveDirection or Vector3.zero
     local vBase
-
     if hum2 and hum2.FloorMaterial == Enum.Material.Air then
         local dy = vPhys.Y * lead - 0.5 * workspace.Gravity * lead * lead
         return Vector3.new(vPhys.X * lead, dy, vPhys.Z * lead)
     end
-
-    local vMove = md.Magnitude > 0.1
-        and (md.Unit * (hum2 and hum2.WalkSpeed or 16))
-        or Vector3.zero
+    local vMove = md.Magnitude > 0.1 and (md.Unit * (hum2 and hum2.WalkSpeed or 16)) or Vector3.zero
     vBase = vMove.Magnitude > 0.5 and vMove or SA_getVel(root)
-
     if aimHint then
         local toAim = aimHint - root.Position
         if toAim.Magnitude > 0.01 then
@@ -453,43 +368,29 @@ local function SA_predict(hum2, root, lead, aimHint)
             end
         end
     end
-
     if md.Magnitude > 0.1 then
         local right = root.CFrame.RightVector
         local lateral = math.abs(right:Dot(md.Unit))
         lead = lead + lateral * 0.04
     end
-
     return Vector3.new(vBase.X * lead, math.clamp(vBase.Y * lead, -3, 3), vBase.Z * lead)
 end
 
 local function SA_confidence(c, hum2, root, muzzle)
     if not SA.bestMoment then return 1 end
     local s = 1
-
-    if SA.antiJump then
-        s = s * SA_jumpScore(hum2, root)
-    end
-
+    if SA.antiJump then s = s * SA_jumpScore(hum2, root) end
     local wvis, wtot = 0, 0
     for _, n in ipairs(SA_BODY) do
         local pt = c:FindFirstChild(n)
         if pt and pt:IsA("BasePart") then
             local w = BODY_WEIGHT[n] or 1
             wtot = wtot + w
-            if not SA_rayBlocked(muzzle, pt.Position, { c }) then
-                wvis = wvis + w
-            end
+            if not SA_rayBlocked(muzzle, pt.Position, { c }) then wvis = wvis + w end
         end
     end
-    if wtot > 0 then
-        s = s * (0.35 + 0.65 * (wvis / wtot))
-    end
-
-    if EC.jitter > 0.05 then
-        s = s * math.clamp(1 - (EC.jitter - 0.05) * 3, 0.5, 1)
-    end
-
+    if wtot > 0 then s = s * (0.35 + 0.65 * (wvis / wtot)) end
+    if EC.jitter > 0.05 then s = s * math.clamp(1 - (EC.jitter - 0.05) * 3, 0.5, 1) end
     local phase = SA_phase[c]
     if hum2 and hum2.MoveDirection.Magnitude > 0.1 then
         if phase and phase.lastMd and phase.lastMd.Magnitude > 0.1 then
@@ -497,10 +398,7 @@ local function SA_confidence(c, hum2, root, muzzle)
             if dot < 0.5 then s = s * 0.7 end
         end
         SA_phase[c] = { lastMd = hum2.MoveDirection }
-    else
-        SA_phase[c] = nil
-    end
-
+    else SA_phase[c] = nil end
     return s
 end
 
@@ -513,9 +411,7 @@ local function SA_findWbSpot(mRoot, muzzle)
             local ang = base + (k % 2 == 0 and 1 or -1) * math.ceil(k / 2) * (math.pi / 12)
             for _, h in ipairs({ 1, 2, 3, 4.5, 6 }) do
                 local p = mRoot.Position + Vector3.new(math.cos(ang) * dist, h, math.sin(ang) * dist)
-                if not SA_rayBlocked(p, mRoot.Position, { mChar }) and SA_anyVisible(mChar, p) then
-                    return p
-                end
+                if not SA_rayBlocked(p, mRoot.Position, { mChar }) and SA_anyVisible(mChar, p) then return p end
             end
         end
     end
@@ -526,9 +422,8 @@ local function SA_findQuietSpot(mRoot, myChar)
     if not root then return end
     local facing = CFrame.lookAt(root.Position, Vector3.new(mRoot.Position.X, root.Position.Y, mRoot.Position.Z))
     for _, off in ipairs({
-        Vector3.new(0, 0, 4), Vector3.new(0, 0, -4),
-        Vector3.new(4, 0, 0), Vector3.new(-4, 0, 0),
-        Vector3.new(0, 5, 3), Vector3.new(0, 2, 2),
+        Vector3.new(0,0,4),Vector3.new(0,0,-4),Vector3.new(4,0,0),
+        Vector3.new(-4,0,0),Vector3.new(0,5,3),Vector3.new(0,2,2),
     }) do
         local pos = (facing * CFrame.new(off)).Position
         if not SA_rayBlocked(root.Position, pos) and not SA_rayBlocked(pos, mRoot.Position) then
@@ -539,9 +434,7 @@ end
 
 local WSH={}
 get_ws_fn=function()
-    local ok,m=pcall(function()
-        return require(Replicated:WaitForChild("ClientServices"):WaitForChild("WeaponService"))
-    end)
+    local ok,m=pcall(function() return require(Replicated:WaitForChild("ClientServices"):WaitForChild("WeaponService")) end)
     if ok and type(m)=="table" then return m end
     return WSH.m
 end
@@ -549,20 +442,16 @@ end
 local function resolve()
     if not SA.enabled then return nil end
     if not target_p or not target_p.Character then
-        pcall(refresh_target)
-        if not target_p then return nil end
+        pcall(refresh_target); if not target_p then return nil end
     end
     local c = target_char
     if not c or not c.Parent then pcall(refresh_target); c = target_char end
     if not c then return nil end
-    local root = c:FindFirstChild("HumanoidRootPart")
-    if not root then return nil end
-
+    local root = c:FindFirstChild("HumanoidRootPart"); if not root then return nil end
     local hum2 = c:FindFirstChildOfClass("Humanoid")
 
     local lead = math.clamp(rtt_p90() + EC.jitter * 0.5, 0.05, 0.45)
     if lead < 0.09 then lead = 0.09 end
-
     local off = SA_predict(hum2, root, lead)
 
     local myChar = LP.Character
@@ -585,23 +474,15 @@ local function resolve()
     if wbSpot and att then
         SA.wbTemp = { att = att, orig = att.WorldCFrame }
         pcall(function() att.WorldCFrame = CFrame.new(wbSpot) end)
-    else
-        SA.wbTemp = nil
-    end
+    else SA.wbTemp = nil end
 
     local quietCf
-    if SA.quiet and not wbSpot then
-        quietCf = SA_findQuietSpot(root, myChar)
-    end
+    if SA.quiet and not wbSpot then quietCf = SA_findQuietSpot(root, myChar) end
 
     local order
-    if conf >= 0.75 then
-        order = { "Head", "UpperTorso", "Torso", "HumanoidRootPart", "LowerTorso" }
-    elseif SA.part == "Head" then
-        order = { "Head", "UpperTorso", "Torso", "HumanoidRootPart", "LowerTorso" }
-    else
-        order = { "UpperTorso", "Torso", "LowerTorso", "HumanoidRootPart", "Head" }
-    end
+    if conf >= 0.75 then order = { "Head","UpperTorso","Torso","HumanoidRootPart","LowerTorso" }
+    elseif SA.part == "Head" then order = { "Head","UpperTorso","Torso","HumanoidRootPart","LowerTorso" }
+    else order = { "UpperTorso","Torso","LowerTorso","HumanoidRootPart","Head" } end
 
     local fromPos = wbSpot or (quietCf and quietCf.Position) or muzzle
     rp.FilterDescendantsInstances = { myChar, workspace.CurrentCamera }
@@ -614,13 +495,7 @@ local function resolve()
             local dir = aimPos - fromPos
             local hit = workspace:Raycast(fromPos, dir, rp)
             if not hit or hit.Instance:IsDescendantOf(c) then
-                local w = BODY_WEIGHT[name] or 1
-                table.insert(candidates, {
-                    pos = aimPos,
-                    dist = (aimPos - fromPos).Magnitude,
-                    weight = w,
-                    name = name,
-                })
+                table.insert(candidates, { pos=aimPos, dist=(aimPos-fromPos).Magnitude, weight=BODY_WEIGHT[name] or 1, name=name })
             end
         end
     end
@@ -632,9 +507,7 @@ local function resolve()
             return a.dist < b.dist
         end)
         for _, cand in ipairs(candidates) do
-            if cand.weight >= 1.5 or cand.name == order[1] then
-                picked = cand.pos; break
-            end
+            if cand.weight >= 1.5 or cand.name == order[1] then picked = cand.pos; break end
         end
         picked = picked or candidates[1].pos
     end
@@ -656,9 +529,7 @@ local function resolve()
             if part and part:IsA("BasePart") then
                 local aimPos = part.Position + off
                 local hit = workspace:Raycast(wbSpot, aimPos - wbSpot, rp)
-                if not hit or hit.Instance:IsDescendantOf(c) then
-                    return aimPos
-                end
+                if not hit or hit.Instance:IsDescendantOf(c) then return aimPos end
             end
         end
     end
@@ -666,10 +537,7 @@ local function resolve()
     local fallback
     for _, name in ipairs(order) do
         local part = c:FindFirstChild(name)
-        if part and part:IsA("BasePart") then
-            fallback = fallback or (part.Position + off)
-            break
-        end
+        if part and part:IsA("BasePart") then fallback = fallback or (part.Position + off); break end
     end
     return fallback or (root.Position + off)
 end
@@ -682,12 +550,8 @@ local function restore_wb()
 end
 
 install_hooks=function()
-    local cur = get_ws_fn()
-    if not cur then return end
-    if cur ~= WSH.m then
-        WSH.m = cur
-        WSH.hooked = {}
-    end
+    local cur = get_ws_fn(); if not cur then return end
+    if cur ~= WSH.m then WSH.m = cur; WSH.hooked = {} end
     if not WSH.hooked then WSH.hooked = {} end
     pcall(function() setreadonly(cur,false) end)
 
@@ -712,9 +576,7 @@ install_hooks=function()
         end
     end
 
-    local fireCandidates = {
-        "FireServer","Fire","Shoot","FireGun","FireWeapon","FireBullet","ShootGun","TriggerGun",
-    }
+    local fireCandidates = { "FireServer","Fire","Shoot","FireGun","FireWeapon","FireBullet","ShootGun","TriggerGun" }
     for _, name in ipairs(fireCandidates) do
         if type(cur[name])=="function" and not WSH.hooked[name] then
             local orig = cur[name]
@@ -742,7 +604,66 @@ getgenv().KNIFE_AIM_RESOLVE=function()
 end
 
 -- ============================================================
--- [KILL AURA]
+-- [WALL CHECK]
+-- ============================================================
+local function wc_clear()
+    safe_disconnect(wcConn); wcConn=nil
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl.Character then
+            local h = pl.Character:FindFirstChild("sWC")
+            if h then h:Destroy() end
+        end
+    end
+end
+
+local function wc_apply(pl, blocked)
+    local c = pl.Character; if not c then return end
+    local h = c:FindFirstChild("sWC")
+    if not h then
+        h = Instance.new("Highlight")
+        h.Name = "sWC"
+        h.OutlineTransparency = 0
+        h.DepthMode = WC.depth == "always" and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+        h.Parent = c
+    end
+    h.DepthMode = WC.depth == "always" and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+    if blocked then
+        h.FillColor = WC.blockedColor; h.OutlineColor = WC.blockedColor
+        h.FillTransparency = 0.5
+    else
+        h.FillColor = WC.visColor; h.OutlineColor = WC.visColor
+        h.FillTransparency = 0.65
+    end
+end
+
+local function wc_start()
+    wc_clear()
+    wcConn = RS.Heartbeat:Connect(function()
+        if not WC.on or not ADDON.loaded then return end
+        local myChar = LP.Character
+        local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return end
+        local origin = myRoot.Position
+        for _, pl in ipairs(Players:GetPlayers()) do
+            if pl ~= LP and pl.Character then
+                local head = pl.Character:FindFirstChild("Head")
+                local hh = pl.Character:FindFirstChildOfClass("Humanoid")
+                if head and hh and hh.Health > 0 then
+                    local blocked = SA_rayBlocked(origin, head.Position, { pl.Character, myChar })
+                    if blocked and WC.showBlocked then wc_apply(pl, true)
+                    elseif not blocked and WC.showVis then wc_apply(pl, false)
+                    else
+                        local ex = pl.Character:FindFirstChild("sWC")
+                        if ex then ex:Destroy() end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- ============================================================
+-- [KILL AURA / GUN / TRACER / BACKTRACK]
 -- ============================================================
 ka_tick=function()
     if not KA.on then return end
@@ -757,8 +678,7 @@ ka_tick=function()
         end
         return
     end
-    local now=os.clock()
-    if now-KA.last<0.05 then return end
+    local now=os.clock(); if now-KA.last<0.05 then return end
     local myp=c:FindFirstChild("HumanoidRootPart"); if not myp then return end
     local events=knife:FindFirstChild("Events")
     local stabbed=events and events:FindFirstChild("KnifeStabbed")
@@ -778,14 +698,9 @@ ka_tick=function()
     if fired then KA.last=now end
 end
 
--- ============================================================
--- [GUN GRAB]
--- ============================================================
 local function grab_has_role()
     if not grab_round_mod then
-        local ok,m=pcall(function()
-            return require(Replicated:WaitForChild("Modules"):WaitForChild("CurrentRoundClient"))
-        end)
+        local ok,m=pcall(function() return require(Replicated:WaitForChild("Modules"):WaitForChild("CurrentRoundClient")) end)
         if ok and type(m)=="table" then grab_round_mod=m end
     end
     local d=grab_round_mod and grab_round_mod.PlayerData
@@ -817,13 +732,8 @@ end
 local function grab_desc_added(obj)
     if obj.Name=="GunDrop" and obj:IsA("BasePart") then task.wait(0.1); grab_gun(obj) end
 end
-local function grab_desc_stop()
-    safe_disconnect(grab_desc_conn); grab_desc_conn=nil
-end
+local function grab_desc_stop() safe_disconnect(grab_desc_conn); grab_desc_conn=nil end
 
--- ============================================================
--- [TRACER]
--- ============================================================
 local function to_pos(v)
     if typeof(v)=="Vector3" then return v end
     if typeof(v)=="CFrame" then return v.Position end
@@ -834,8 +744,7 @@ local function to_pos(v)
 end
 enableTracer_fn=function()
     if TRACE.conn then return end
-    local m=get_ws_fn()
-    local ev=m and m.GunFired
+    local m=get_ws_fn(); local ev=m and m.GunFired
     if typeof(ev)~="Instance" then return end
     TRACE.conn=ev.OnClientEvent:Connect(function(gun,a,b)
         if not fl.tracer then return end
@@ -847,8 +756,7 @@ enableTracer_fn=function()
             pa=pa or cam.CFrame.Position
             pb=pb or (pa+cam.CFrame.LookVector*3000)
         end
-        local d=pb-pa; local dist=d.Magnitude
-        if dist<0.1 then return end
+        local d=pb-pa; local dist=d.Magnitude; if dist<0.1 then return end
         local p=Instance.new("Part")
         p.Name="sBeam"; p.Anchored=true
         p.CanCollide=false; p.CanQuery=false; p.CanTouch=false; p.CastShadow=false
@@ -858,26 +766,17 @@ enableTracer_fn=function()
         p.Transparency=0.05; p.Parent=workspace
         local li=Instance.new("PointLight",p)
         li.Color=FC.tracer; li.Brightness=3; li.Range=10
-        local ts=0
-        local cn
+        local ts=0; local cn
         cn=RS.Heartbeat:Connect(function(dt)
             ts=ts+dt; local k=ts/0.6
-            if k>=1 or not p.Parent then
-                safe_disconnect(cn); safe_destroy(p); return
-            end
-            p.Transparency=0.05+k*0.95
-            li.Brightness=3*(1-k)
+            if k>=1 or not p.Parent then safe_disconnect(cn); safe_destroy(p); return end
+            p.Transparency=0.05+k*0.95; li.Brightness=3*(1-k)
         end)
     end)
 end
-disableTracer_fn=function()
-    safe_disconnect(TRACE.conn); TRACE.conn=nil
-end
+disableTracer_fn=function() safe_disconnect(TRACE.conn); TRACE.conn=nil end
 connect_trace_fn=enableTracer_fn
 
--- ============================================================
--- [BACKTRACK]
--- ============================================================
 bt_destroy=function()
     safe_destroy(BT.model); BT.model=nil
     BT.cache={}; BT.hist={}; BT.first=1; BT.n=0
@@ -892,9 +791,7 @@ bt_build=function()
     char.Archivable=prevArch
     if not ok or not m then return end
     local rparts={}
-    for _,o in char:GetDescendants() do
-        if o:IsA("BasePart") then rparts[#rparts+1]=o end
-    end
+    for _,o in char:GetDescendants() do if o:IsA("BasePart") then rparts[#rparts+1]=o end end
     local ci=0
     for _,o in m:GetDescendants() do
         if o:IsA("Script") or o:IsA("LocalScript") or o:IsA("ModuleScript")
@@ -904,13 +801,8 @@ bt_build=function()
         elseif o:IsA("BasePart") then
             o.Anchored=true; o.CanCollide=false; o.CanQuery=false
             o.CanTouch=false; o.Massless=true; o.CastShadow=false
-            if o.Name=="HumanoidRootPart" then
-                o.Transparency=1
-            else
-                o.Material=Enum.Material.ForceField
-                o.Color=FC.bt
-                o.Transparency=SZ.bt
-            end
+            if o.Name=="HumanoidRootPart" then o.Transparency=1
+            else o.Material=Enum.Material.ForceField; o.Color=FC.bt; o.Transparency=SZ.bt end
             ci=ci+1
             if rparts[ci] then BT.cache[#BT.cache+1]={o,rparts[ci]} end
         end
@@ -948,9 +840,7 @@ bt_update=function()
     local baseInv=rhrp.CFrame:Inverse()
     for i=1,#BT.cache do
         local cp,rpv=BT.cache[i][1],BT.cache[i][2]
-        if cp and cp.Parent and rpv and rpv.Parent then
-            cp.CFrame=cf*(baseInv*rpv.CFrame)
-        end
+        if cp and cp.Parent and rpv and rpv.Parent then cp.CFrame=cf*(baseInv*rpv.CFrame) end
     end
 end
 bt_conn=RS.Heartbeat:Connect(function() if BT.on then pcall(bt_update) end end)
@@ -986,15 +876,12 @@ startNoclip=function()
 end
 stopNoclip=function()
     safe_disconnect(moveConns.noclip); moveConns.noclip=nil
-    for p,was in pairs(moveConns.nc) do
-        if p and p.Parent then pcall(function() p.CanCollide=was end) end
-    end
+    for p,was in pairs(moveConns.nc) do if p and p.Parent then pcall(function() p.CanCollide=was end) end end
     table.clear(moveConns.nc)
 end
 startFly=function()
     safe_disconnect(flyConn); flyConn=nil
-    safe_destroy(MOVE.fg); MOVE.fg=nil
-    safe_destroy(MOVE.fv); MOVE.fv=nil
+    safe_destroy(MOVE.fg); MOVE.fg=nil; safe_destroy(MOVE.fv); MOVE.fv=nil
     local c0=LP.Character; local hrp0=c0 and c0:FindFirstChild("HumanoidRootPart"); if not hrp0 then return end
     local h0=c0:FindFirstChildOfClass("Humanoid"); if not h0 then return end
     pcall(function() h0.PlatformStand=true end)
@@ -1019,14 +906,12 @@ startFly=function()
         if UIS:IsKeyDown(Enum.KeyCode.D) then dir=dir+rgt end
         if UIS:IsKeyDown(Enum.KeyCode.Space) then dir=dir+Vector3.new(0,1,0) end
         if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then dir=dir-Vector3.new(0,1,0) end
-        if dir.Magnitude>0.1 then MOVE.fv.Velocity=dir.Unit*MOVE.flySpeed
-        else MOVE.fv.Velocity=Vector3.zero end
+        if dir.Magnitude>0.1 then MOVE.fv.Velocity=dir.Unit*MOVE.flySpeed else MOVE.fv.Velocity=Vector3.zero end
     end)
 end
 stopFly=function()
     safe_disconnect(flyConn); flyConn=nil
-    safe_destroy(MOVE.fg); MOVE.fg=nil
-    safe_destroy(MOVE.fv); MOVE.fv=nil
+    safe_destroy(MOVE.fg); MOVE.fg=nil; safe_destroy(MOVE.fv); MOVE.fv=nil
     local c=LP.Character
     if c then
         local h=c:FindFirstChildOfClass("Humanoid")
@@ -1072,9 +957,7 @@ local function startAntiJump()
         end
     end)
 end
-local function stopAntiJump()
-    safe_disconnect(antiJumpConn); antiJumpConn=nil
-end
+local function stopAntiJump() safe_disconnect(antiJumpConn); antiJumpConn=nil end
 
 moveReset=function()
     MOVE.speedOn=false; MOVE.jumpOn=false; MOVE.hipOn=false
@@ -1091,9 +974,7 @@ task.spawn(function()
             local hrp=c and c:FindFirstChild("HumanoidRootPart")
             if hrp then
                 if hrp.Position.Y>workspace.FallenPartsDestroyHeight+30 then lastSafe=hrp.CFrame
-                elseif MOVE.antiFall and lastSafe then
-                    hrp.CFrame=lastSafe; hrp.Velocity=Vector3.zero
-                end
+                elseif MOVE.antiFall and lastSafe then hrp.CFrame=lastSafe; hrp.Velocity=Vector3.zero end
             end
         end)
         task.wait(0.2)
@@ -1113,10 +994,8 @@ task.spawn(function()
 end)
 
 -- ============================================================
--- [FLING] — четыре режима, усиленная физика
+-- [FLING] — 4 режима
 -- ============================================================
-
--- общий префикс: сохранить состояние, выключить seated, обнулить скорость
 local function flingSetup(hrp, hum2)
     local old = {}
     old.cf = hrp.CFrame
@@ -1127,7 +1006,6 @@ local function flingSetup(hrp, hum2)
     pcall(function() workspace.FallenPartsDestroyHeight = 0/0 end)
     return old
 end
-
 local function flingTeardown(hrp, hum2, old)
     pcall(function() hum2:SetStateEnabled(Enum.HumanoidStateType.Seated, old.seated) end)
     pcall(function() workspace.FallenPartsDestroyHeight = old.fall end)
@@ -1144,16 +1022,11 @@ local function flingTeardown(hrp, hum2, old)
     end
 end
 
--- режим 1: orbit — цель вокруг жертвы с нарастающей угловой скоростью
 local function flingOrbit(hrp, thum, thrp, dur)
     local ang = 0
     local t0 = os.clock()
     local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9) bv.Velocity = Vector3.zero bv.Parent = hrp
-    local bav = Instance.new("BodyAngularVelocity")
-    bav.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-    bav.AngularVelocity = Vector3.new(0, 0, 0)
-    bav.Parent = hrp
+    bv.MaxForce = Vector3.new(9e9,9e9,9e9) bv.Velocity = Vector3.zero bv.Parent = hrp
     while os.clock() - t0 < dur and hrp.Parent and thrp.Parent do
         local tv = thrp.Velocity
         if tv.Magnitude > 50 and thum then tv = thum.MoveDirection * thum.WalkSpeed end
@@ -1161,34 +1034,33 @@ local function flingOrbit(hrp, thum, thrp, dur)
         ang = ang + 165
         local r = ang % 360
         local off
-        if r < 90 then off = Vector3.new(0, 2.5, 0)
-        elseif r < 180 then off = Vector3.new(0, -2.5, 0)
-        elseif r < 270 then off = Vector3.new(2.5, 0, 0)
-        else off = Vector3.new(-2.5, 0, 0) end
-        local cf = CFrame.new(lead + off) * CFrame.Angles(math.rad(ang), 0, 0)
+        if r < 90 then off = Vector3.new(0,2.5,0)
+        elseif r < 180 then off = Vector3.new(0,-2.5,0)
+        elseif r < 270 then off = Vector3.new(2.5,0,0)
+        else off = Vector3.new(-2.5,0,0) end
+        local cf = CFrame.new(lead + off) * CFrame.Angles(math.rad(ang),0,0)
         pcall(function()
             hrp.CFrame = cf
-            hrp.AssemblyLinearVelocity = Vector3.new(FLING.force, FLING.force * 10, FLING.force)
-            hrp.AssemblyAngularVelocity = Vector3.new(9e9, 9e9, 9e9)
+            hrp.AssemblyLinearVelocity = Vector3.new(FLING.force, FLING.force*10, FLING.force)
+            hrp.AssemblyAngularVelocity = Vector3.new(9e9,9e9,9e9)
         end)
         RS.Heartbeat:Wait()
     end
-    safe_destroy(bv); safe_destroy(bav)
+    safe_destroy(bv)
 end
 
--- режим 2: slam — прямая инъекция скорости через BodyVelocity+BodyAngularVelocity
 local function flingSlam(hrp, thum, thrp, dur)
     local t0 = os.clock()
     local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9) bv.P = 1e5 bv.Parent = hrp
+    bv.MaxForce = Vector3.new(9e9,9e9,9e9) bv.P = 1e5 bv.Parent = hrp
     local bav = Instance.new("BodyAngularVelocity")
-    bav.MaxTorque = Vector3.new(9e9, 9e9, 9e9) bav.P = 1e5 bav.Parent = hrp
+    bav.MaxTorque = Vector3.new(9e9,9e9,9e9) bav.P = 1e5 bav.Parent = hrp
     while os.clock() - t0 < dur and hrp.Parent and thrp.Parent do
-        local dir = (thrp.Position - hrp.Position)
-        if dir.Magnitude < 1 then dir = Vector3.new(0, 1, 0) end
+        local dir = thrp.Position - hrp.Position
+        if dir.Magnitude < 1 then dir = Vector3.new(0,1,0) end
         dir = dir.Unit
         pcall(function()
-            bv.Velocity = dir * FLING.force + Vector3.new(0, FLING.force * 0.5, 0)
+            bv.Velocity = dir * FLING.force + Vector3.new(0, FLING.force*0.5, 0)
             bav.AngularVelocity = Vector3.new(FLING.force, FLING.force, FLING.force)
         end)
         RS.Heartbeat:Wait()
@@ -1196,56 +1068,51 @@ local function flingSlam(hrp, thum, thrp, dur)
     safe_destroy(bv); safe_destroy(bav)
 end
 
--- режим 3: spin — вращение вокруг цели с накоплением угловой скорости
 local function flingSpin(hrp, thum, thrp, dur)
     local t0 = os.clock()
     local bav = Instance.new("BodyAngularVelocity")
-    bav.MaxTorque = Vector3.new(9e9, 9e9, 9e9) bav.Parent = hrp
+    bav.MaxTorque = Vector3.new(9e9,9e9,9e9) bav.Parent = hrp
     local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9) bv.Parent = hrp
+    bv.MaxForce = Vector3.new(9e9,9e9,9e9) bv.Parent = hrp
     local spin = 0
     while os.clock() - t0 < dur and hrp.Parent and thrp.Parent do
         spin = spin + 800
-        local dir = (thrp.Position - hrp.Position)
-        if dir.Magnitude < 1 then dir = Vector3.new(0, 1, 0) end
+        local dir = thrp.Position - hrp.Position
+        if dir.Magnitude < 1 then dir = Vector3.new(0,1,0) end
         dir = dir.Unit
         pcall(function()
-            bav.AngularVelocity = Vector3.new(math.rad(spin) % (2*math.pi), spin, 0)
+            bav.AngularVelocity = Vector3.new(spin, spin, 0)
             bv.Velocity = dir * (FLING.force * 0.5)
-            hrp.RotVelocity = Vector3.new(9e9, 9e9, 9e9)
+            hrp.RotVelocity = Vector3.new(9e9,9e9,9e9)
         end)
         RS.Heartbeat:Wait()
     end
     safe_destroy(bav); safe_destroy(bv)
 end
 
--- режим 4: anchor-break — временная анкоризация, swing через pivot, потом отпуск
 local function flingAnchor(hrp, thum, thrp, dur)
     local t0 = os.clock()
-    local wasAnchored = hrp.Anchored
     local wasMassless = hrp.Massless
-    hrp.Anchored = false
     hrp.Massless = true
     local bav = Instance.new("BodyAngularVelocity")
-    bav.MaxTorque = Vector3.new(9e9, 9e9, 9e9) bav.Parent = hrp
+    bav.MaxTorque = Vector3.new(9e9,9e9,9e9) bav.Parent = hrp
     local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9) bv.Parent = hrp
+    bv.MaxForce = Vector3.new(9e9,9e9,9e9) bv.Parent = hrp
     local angle = 0
     while os.clock() - t0 < dur and hrp.Parent and thrp.Parent do
         angle = angle + 240
         local r = math.rad(angle)
         local r2 = 8 + 4 * math.sin(r * 1.5)
-        local offset = Vector3.new(math.cos(r) * r2, 3 + 2 * math.sin(r * 2), math.sin(r) * r2)
+        local offset = Vector3.new(math.cos(r)*r2, 3 + 2*math.sin(r*2), math.sin(r)*r2)
         pcall(function()
-            hrp.CFrame = CFrame.new(thrp.Position + offset) * CFrame.Angles(r * 3, r, 0)
-            hrp.AssemblyLinearVelocity = Vector3.new(FLING.force, FLING.force * 2, FLING.force)
-            hrp.AssemblyAngularVelocity = Vector3.new(9e9, 9e9, 9e9)
-            bav.AngularVelocity = Vector3.new(9e9, 9e9, 9e9)
-            bv.Velocity = Vector3.new(FLING.force, FLING.force * 3, FLING.force)
+            hrp.CFrame = CFrame.new(thrp.Position + offset) * CFrame.Angles(r*3, r, 0)
+            hrp.AssemblyLinearVelocity = Vector3.new(FLING.force, FLING.force*2, FLING.force)
+            hrp.AssemblyAngularVelocity = Vector3.new(9e9,9e9,9e9)
+            bav.AngularVelocity = Vector3.new(9e9,9e9,9e9)
+            bv.Velocity = Vector3.new(FLING.force, FLING.force*3, FLING.force)
         end)
         RS.Heartbeat:Wait()
     end
-    hrp.Anchored = wasAnchored
     hrp.Massless = wasMassless
     safe_destroy(bav); safe_destroy(bv)
 end
@@ -1255,22 +1122,13 @@ local function flingCore(thrp, thum, dur)
     local hrp = c and c:FindFirstChild("HumanoidRootPart"); if not hrp then return false end
     local hum2 = c:FindFirstChildOfClass("Humanoid"); if not hum2 then return false end
     if thum and thum.Sit then return false end
-
     local old = flingSetup(hrp, hum2)
     local d = dur or FLING.duration
-
-    if FLING.mode == "orbit" then
-        flingOrbit(hrp, thum, thrp, d)
-    elseif FLING.mode == "slam" then
-        flingSlam(hrp, thum, thrp, d)
-    elseif FLING.mode == "spin" then
-        flingSpin(hrp, thum, thrp, d)
-    elseif FLING.mode == "anchor" then
-        flingAnchor(hrp, thum, thrp, d)
-    else
-        flingOrbit(hrp, thum, thrp, d)
-    end
-
+    if FLING.mode == "orbit" then flingOrbit(hrp, thum, thrp, d)
+    elseif FLING.mode == "slam" then flingSlam(hrp, thum, thrp, d)
+    elseif FLING.mode == "spin" then flingSpin(hrp, thum, thrp, d)
+    elseif FLING.mode == "anchor" then flingAnchor(hrp, thum, thrp, d)
+    else flingOrbit(hrp, thum, thrp, d) end
     flingTeardown(hrp, hum2, old)
     return true
 end
@@ -1281,23 +1139,15 @@ local function flingTarget(target, dur)
     local thrp = tchar:FindFirstChild("HumanoidRootPart") or tchar:FindFirstChild("Head"); if not thrp then return end
     local thum = tchar:FindFirstChildOfClass("Humanoid")
     TROLL.flinging = true
-    FLING.active = true
     task.spawn(function()
         flingCore(thrp, thum, dur or 2.2)
         TROLL.flinging = false
-        FLING.active = false
     end)
 end
-
-local function flingNearest()
-    local t = nearest_player()
-    if t then flingTarget(t) end
-end
-
+local function flingNearest() local t=nearest_player(); if t then flingTarget(t) end end
 local function flingAll()
     if TROLL.flinging then return end
     TROLL.flinging = true
-    FLING.active = true
     task.spawn(function()
         for _,p in ipairs(Players:GetPlayers()) do
             if p ~= LP and p.Character then
@@ -1321,17 +1171,12 @@ local function flingAll()
             end
         end
         TROLL.flinging = false
-        FLING.active = false
     end)
 end
-
-local function stopTroll()
-    TROLL.flinging = false
-    FLING.active = false
-end
+local function stopTroll() TROLL.flinging = false end
 
 -- ============================================================
--- [VISUALS]
+-- [VISUALS] — функции без изменений, полный список
 -- ============================================================
 local function mkTrail()
     local up=UP(); if not up then return end
@@ -1419,19 +1264,14 @@ local function mkSky()
             local cn
             cn=RS.Heartbeat:Connect(function(dt)
                 life=life+dt
-                if life>=maxLife or not p.Parent then
-                    safe_disconnect(cn); safe_destroy(p); return
-                end
+                if life>=maxLife or not p.Parent then safe_disconnect(cn); safe_destroy(p); return end
                 p.CFrame=p.CFrame*CFrame.new((math.random()-0.5)*0.05,-15*dt,(math.random()-0.5)*0.05)
                 p.Transparency=math.min(0.95,life/maxLife)
             end)
         end
     end)
 end
-local function clSky()
-    safe_disconnect(skyC); skyC=nil
-    safe_destroy(skyFolder); skyFolder=nil
-end
+local function clSky() safe_disconnect(skyC); skyC=nil; safe_destroy(skyFolder); skyFolder=nil end
 local function mkLight()
     local hrp=HRP(); if not hrp then return end
     if hrp:FindFirstChild("sLightAtt") then return end
@@ -1505,10 +1345,7 @@ local function mkBo()
         end
     end)
 end
-local function clBo()
-    safe_disconnect(boC); boC=nil
-    safe_destroy(boFolder); boFolder=nil
-end
+local function clBo() safe_disconnect(boC); boC=nil; safe_destroy(boFolder); boFolder=nil end
 local function mkHat()
     local c=LP.Character; if not c then return end
     local head=HEAD(); if not head then return end
@@ -1530,9 +1367,7 @@ local function mkHat()
     r.Transparency=0.2; r.CastShadow=false; r.Parent=c
     safe_disconnect(hatC); hatC=nil
     hatC=RS.RenderStepped:Connect(function()
-        if not h.Parent or not r.Parent then
-            safe_disconnect(hatC); hatC=nil; return
-        end
+        if not h.Parent or not r.Parent then safe_disconnect(hatC); hatC=nil; return end
         if not head.Parent then return end
         h.CFrame=head.CFrame*CFrame.new(0,1.2,0)
         r.CFrame=head.CFrame*CFrame.new(0,0.75,0)*CFrame.Angles(0,0,math.rad(90))
@@ -1600,13 +1435,10 @@ local function mkFoot()
             p.CastShadow=false; p.Material=Enum.Material.Neon; p.Color=col; p.Transparency=0.15
             p.CFrame=CFrame.new(hrp.Position-Vector3.new(0,2.7,0))*CFrame.Angles(0,0,math.rad(90))
             p.Parent=workspace
-            local ts=0
-            local cn
+            local ts=0; local cn
             cn=RS.Heartbeat:Connect(function(dt)
                 ts=ts+dt; local k=ts/0.45
-                if k>=1 or not p.Parent then
-                    safe_disconnect(cn); safe_destroy(p); return
-                end
+                if k>=1 or not p.Parent then safe_disconnect(cn); safe_destroy(p); return end
                 local sz=s*(1-k*0.6)
                 p.Size=Vector3.new(0.15,sz,sz)
                 p.Transparency=0.15+k*0.85
@@ -1635,10 +1467,7 @@ local function mkOrb()
     local t=0
     orbC=RS.Heartbeat:Connect(function(dt)
         t=t+dt
-        if not hrp.Parent or not f.Parent then
-            safe_disconnect(orbC); orbC=nil
-            safe_destroy(f); return
-        end
+        if not hrp.Parent or not f.Parent then safe_disconnect(orbC); orbC=nil; safe_destroy(f); return end
         for i,o in ipairs(orbs) do
             local a=t*2+i*(math.pi/3)
             o.CFrame=hrp.CFrame*CFrame.new(math.cos(a)*SZ.orbAura,math.sin(t*3+i)*0.4,math.sin(a)*SZ.orbAura)
@@ -1670,13 +1499,10 @@ local function mkGhost()
         ghostH.FillColor=FC.ghost; ghostH.OutlineColor=FC.ghost
         ghostH.FillTransparency=0.4; ghostH.OutlineTransparency=0
         ghostH.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop; ghostH.Parent=workspace
-        local t=0
-        local cn
+        local t=0; local cn
         cn=RS.Heartbeat:Connect(function(dt)
             t=t+dt; local k=t/0.4
-            if k>=1 or not ghostH.Parent then
-                safe_disconnect(cn); safe_destroy(ghostH); return
-            end
+            if k>=1 or not ghostH.Parent then safe_disconnect(cn); safe_destroy(ghostH); return end
             ghostH.FillTransparency=0.4+k*0.55
             ghostH.OutlineTransparency=k
         end)
@@ -1701,10 +1527,7 @@ local function mkAtmo()
     end
     atmo.Density=SZ.atmo; atmo.Color=col; atmo.Decay=LT(col)
 end
-local function clAtmo()
-    safe_destroy(cc); cc=nil
-    safe_destroy(atmo); atmo=nil
-end
+local function clAtmo() safe_destroy(cc); cc=nil; safe_destroy(atmo); atmo=nil end
 local function mkFB()
     L.Ambient=Color3.new(1,1,1); L.OutdoorAmbient=Color3.new(1,1,1)
     L.Brightness=2; L.GlobalShadows=false
@@ -1742,16 +1565,10 @@ applyTime=function(p)
     end
 end
 toggleFog=function(v)
-    if v then
-        L.FogEnd=200; L.FogStart=20; L.FogColor=Color3.fromRGB(60,50,90)
-    else
-        L.FogEnd=1e6; L.FogStart=0
-    end
+    if v then L.FogEnd=200; L.FogStart=20; L.FogColor=Color3.fromRGB(60,50,90)
+    else L.FogEnd=1e6; L.FogStart=0 end
 end
 
--- ============================================================
--- [ESP]
--- ============================================================
 local function mkESP()
     if espC then return end
     espC=RS.Heartbeat:Connect(function()
@@ -1849,15 +1666,10 @@ local function updateRoleTags()
             local h=c and c:FindFirstChild("Head")
             local r=c and roleLabel(pl) or nil
             if h and r then attachRoleTag(pl,h,r) else detachRoleTag(pl) end
-        else
-            detachRoleTag(pl)
-        end
+        else detachRoleTag(pl) end
     end
 end
 
--- ============================================================
--- [JUMP FX]
--- ============================================================
 local function mkJump()
     safe_disconnect(jumpC); jumpC=nil
     local c=LP.Character; if not c then return end
@@ -1877,8 +1689,7 @@ local function mkJump()
             m.MeshId="rbxassetid://3270017"
             m.Scale=Vector3.new(SZ.jump,SZ.jump,0.3)
             p.Parent=workspace
-            local ts=0
-            local cn
+            local ts=0; local cn
             cn=RS.Heartbeat:Connect(function(dt)
                 ts=ts+dt; local k=ts/0.5
                 if k>=1 or not p.Parent then safe_disconnect(cn); safe_destroy(p); return end
@@ -1904,16 +1715,11 @@ local function mkJump()
             pe.LightEmission=1; pe.LightInfluence=0; pe.Drag=3
             pe:Emit(35)
             task.delay(1.2,function() safe_destroy(a) end)
-        else
-            ring()
-        end
+        else ring() end
     end)
 end
 local function clJump() safe_disconnect(jumpC); jumpC=nil end
 
--- ============================================================
--- [KILL LIGHTNING]
--- ============================================================
 local function killLightning(pos)
     local bm=Instance.new("Part")
     bm.Name="sKl"; bm.Size=Vector3.new(1.5,80,1.5)
@@ -1923,13 +1729,10 @@ local function killLightning(pos)
     bm.CFrame=CFrame.new(pos+Vector3.new(0,40,0)); bm.Parent=workspace
     local li=Instance.new("PointLight",bm)
     li.Color=Color3.fromRGB(180,150,255); li.Brightness=15; li.Range=40
-    local t=0
-    local cn
+    local t=0; local cn
     cn=RS.Heartbeat:Connect(function(dt)
         t=t+dt; local k=t/0.7
-        if k>=1 or not bm.Parent then
-            safe_disconnect(cn); safe_destroy(bm); return
-        end
+        if k>=1 or not bm.Parent then safe_disconnect(cn); safe_destroy(bm); return end
         bm.Transparency=0.2+k*0.8; li.Brightness=15*(1-k)
     end)
 end
@@ -1953,9 +1756,6 @@ hookKills=function()
     end
 end
 
--- ============================================================
--- [SKIN]
--- ============================================================
 local function applySkinAll()
     local c=LP.Character; if not c then return end
     local h=c:FindFirstChild("Head")
@@ -1974,11 +1774,8 @@ local function applySkinAll()
     end
 end
 
--- ============================================================
--- [KILL ALL]
--- ============================================================
 local function killAll()
-    local c=LP.Character; if not c then MakeNotif("StarWare","No character",2) return end
+    local c=LP.Character; if not c then return end
     local knife=c:FindFirstChild("Knife")
     if not knife then
         local bp=LP:FindFirstChildOfClass("Backpack")
@@ -1989,11 +1786,11 @@ local function killAll()
             task.wait(0.3); knife=c:FindFirstChild("Knife")
         end
     end
-    if not knife then MakeNotif("StarWare","Need knife",2) return end
+    if not knife then return end
     local events=knife:FindFirstChild("Events")
     local stabbed=events and events:FindFirstChild("KnifeStabbed")
     local touched=events and events:FindFirstChild("HandleTouched")
-    if not stabbed or not touched then MakeNotif("StarWare","No knife events",2) return end
+    if not stabbed or not touched then return end
     local myp=c:FindFirstChild("HumanoidRootPart"); if not myp then return end
     local orig=myp.CFrame
     for _,plr in ipairs(Players:GetPlayers()) do
@@ -2013,151 +1810,564 @@ local function killAll()
 end
 
 -- ============================================================
--- [MENU] Orion (Qanuir fork)
+-- [CUSTOM UI]
 -- ============================================================
-local Window = OrionLib:MakeWindow({
-    Name = "StarWare v3",
-    HidePremium = false,
-    SaveConfig = false,
-    ConfigFolder = "StarWare",
-    IntroEnabled = false,
-    IntroText = "StarWare",
-    Icon = "rbxassetid://4483345998",
-})
+local UI = (function()
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "StarWareMenu"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    pcall(function() gui.Parent = game:GetService("CoreGui") end)
+    if not gui.Parent then gui.Parent = LP:WaitForChild("PlayerGui") end
 
--- COMBAT
-local TabCombat = Window:MakeTab({ Name = "Combat", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabCombat:AddSection({ Name = "Silent Aim" })
-TabCombat:AddToggle({ Name = "Silent Aim", Default = true, Callback = function(v)
-    SA.enabled = v; if v then pcall(install_hooks) end
-    MakeNotif("Silent Aim", v and "enabled" or "disabled", 2)
-end })
-TabCombat:AddToggle({ Name = "WallBang", Default = true, Callback = function(v)
-    SA.wb = v; MakeNotif("WallBang", v and "enabled" or "disabled", 2)
-end })
-TabCombat:AddToggle({ Name = "Quiet Peek", Default = true, Callback = function(v)
-    SA.quiet = v; MakeNotif("Quiet Peek", v and "enabled" or "disabled", 2)
-end })
+    local root = Instance.new("Frame", gui)
+    root.Name = "Root"
+    root.Size = UDim2.new(0, 660, 0, 460)
+    root.Position = UDim2.new(0.5, -330, 0.5, -230)
+    root.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    root.BorderSizePixel = 0
+    root.Active = true
+    root.Draggable = true
+    root.ClipsDescendants = true
+    Instance.new("UICorner", root).CornerRadius = UDim.new(0, 8)
+    local stroke = Instance.new("UIStroke", root)
+    stroke.Color = Color3.fromRGB(50, 50, 50); stroke.Thickness = 1
 
-TabCombat:AddSection({ Name = "Intelligence" })
-TabCombat:AddToggle({ Name = "Anti Spam-Jumper", Default = true, Callback = function(v)
-    SA.antiJump = v; MakeNotif("Anti Jump", v and "enabled" or "disabled", 2)
-end })
-TabCombat:AddSlider({ Name = "Jump Radar", Min = 5, Max = 100, Default = 25, Increment = 1,
-    ValueName = "studs", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) SA.jumpRadar = v end })
-TabCombat:AddToggle({ Name = "Auto Predict", Default = true, Callback = function(v)
-    SA.autoPred = v; MakeNotif("Auto Predict", v and "enabled" or "disabled", 2)
-end })
-TabCombat:AddToggle({ Name = "Best Moment", Default = true, Callback = function(v)
-    SA.bestMoment = v; MakeNotif("Best Moment", v and "enabled" or "disabled", 2)
-end })
-TabCombat:AddSlider({ Name = "Confidence Floor", Min = 0.1, Max = 0.9, Default = 0.5, Increment = 0.05,
-    ValueName = "score", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) SA.confFloor = v end })
-TabCombat:AddSlider({ Name = "FOV", Min = 30, Max = 360, Default = 180, Increment = 5,
-    ValueName = "deg", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) SA.fov = v end })
-TabCombat:AddSlider({ Name = "Angle Bias", Min = 0.0, Max = 1.0, Default = 0.4, Increment = 0.05,
-    ValueName = "coef", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) SA.angleBias = v end })
-TabCombat:AddSlider({ Name = "Lateral Bias", Min = 1.0, Max = 2.5, Default = 1.6, Increment = 0.1,
-    ValueName = "x", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) SA.lateralBias = v end })
-TabCombat:AddSlider({ Name = "Switch Blend", Min = 0.0, Max = 1.0, Default = 0.35, Increment = 0.05,
-    ValueName = "coef", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) SA.blend = v end })
+    local top = Instance.new("Frame", root)
+    top.Size = UDim2.new(1, 0, 0, 36)
+    top.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+    top.BorderSizePixel = 0
 
-TabCombat:AddButton({ Name = "Switch Aim Part", Callback = function()
-    SA.part = SA.part == "Torso" and "Head" or "Torso"
-    MakeNotif("Aim Part", SA.part, 2)
-end })
-TabCombat:AddToggle({ Name = "Knife Silent", Default = false, Callback = function(v)
-    KS.enabled = v; MakeNotif("Knife Silent", v and "enabled" or "disabled", 2)
-end })
+    local title = Instance.new("TextLabel", top)
+    title.Size = UDim2.new(1, -100, 1, 0)
+    title.Position = UDim2.new(0, 16, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "StarWare"
+    title.TextColor3 = Color3.fromRGB(220, 220, 220)
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 14
 
-TabCombat:AddSection({ Name = "Kill Aura" })
-TabCombat:AddToggle({ Name = "Kill Aura", Default = false, Callback = function(v)
-    KA.on = v; MakeNotif("Kill Aura", v and "enabled" or "disabled", 2)
-end })
-TabCombat:AddSlider({ Name = "KA Distance", Min = 5, Max = 150, Default = 30, Increment = 1,
-    ValueName = "studs", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) KA.dist = v end })
-TabCombat:AddButton({ Name = "Kill All", Callback = function() task.spawn(killAll) end })
+    local function mkCorner(p) Instance.new("UICorner", p).CornerRadius = UDim.new(0, 4) end
+    local hideBtn = Instance.new("TextButton", top)
+    hideBtn.Size = UDim2.new(0, 24, 0, 24)
+    hideBtn.Position = UDim2.new(1, -62, 0.5, -12)
+    hideBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    hideBtn.Text = "-"; hideBtn.TextColor3 = Color3.fromRGB(200,200,200)
+    hideBtn.Font = Enum.Font.GothamBold; hideBtn.TextSize = 14
+    hideBtn.BorderSizePixel = 0; hideBtn.AutoButtonColor = false
+    mkCorner(hideBtn)
 
-TabCombat:AddSection({ Name = "Gun" })
-TabCombat:AddToggle({ Name = "Auto Gun", Default = false, Callback = function(v)
-    autograb_on = v
-    if v then
-        if not grab_desc_conn then
-            grab_desc_conn = workspace.DescendantAdded:Connect(grab_desc_added)
-        end
-        task.spawn(scan_guns)
-    else
-        grab_desc_stop()
+    local closeBtn = Instance.new("TextButton", top)
+    closeBtn.Size = UDim2.new(0, 24, 0, 24)
+    closeBtn.Position = UDim2.new(1, -32, 0.5, -12)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    closeBtn.Text = "x"; closeBtn.TextColor3 = Color3.fromRGB(200,200,200)
+    closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 14
+    closeBtn.BorderSizePixel = 0; closeBtn.AutoButtonColor = false
+    mkCorner(closeBtn)
+
+    local sidebar = Instance.new("Frame", root)
+    sidebar.Size = UDim2.new(0, 160, 1, -36)
+    sidebar.Position = UDim2.new(0, 0, 0, 36)
+    sidebar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    sidebar.BorderSizePixel = 0
+
+    local sbScroll = Instance.new("ScrollingFrame", sidebar)
+    sbScroll.Size = UDim2.new(1, -16, 1, -16)
+    sbScroll.Position = UDim2.new(0, 8, 0, 8)
+    sbScroll.BackgroundTransparency = 1
+    sbScroll.BorderSizePixel = 0
+    sbScroll.ScrollBarThickness = 3
+    sbScroll.ScrollBarImageColor3 = Color3.fromRGB(80,80,80)
+    sbScroll.CanvasSize = UDim2.new()
+    sbScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    local sbLayout = Instance.new("UIListLayout", sbScroll)
+    sbLayout.Padding = UDim.new(0, 4); sbLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    local content = Instance.new("Frame", root)
+    content.Size = UDim2.new(1, -160, 1, -36)
+    content.Position = UDim2.new(0, 160, 0, 36)
+    content.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    content.BorderSizePixel = 0
+
+    local pages = {}
+    local currentPage = nil
+    local function showPage(id)
+        for k, v in pairs(pages) do v.frame.Visible = (k == id) end
+        currentPage = id
     end
-    MakeNotif("Auto Gun", v and "enabled" or "disabled", 2)
+
+    local api = { gui = gui, root = root }
+
+    function api:AddSection(name)
+        local btn = Instance.new("TextButton", sbScroll)
+        btn.Size = UDim2.new(1, 0, 0, 32)
+        btn.BackgroundColor3 = Color3.fromRGB(45,45,45)
+        btn.Text = "  " .. name
+        btn.TextColor3 = Color3.fromRGB(200,200,200)
+        btn.Font = Enum.Font.GothamMedium
+        btn.TextSize = 13
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.BorderSizePixel = 0
+        btn.AutoButtonColor = false
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+
+        local page = Instance.new("ScrollingFrame", content)
+        page.Size = UDim2.new(1, -24, 1, -24)
+        page.Position = UDim2.new(0, 12, 0, 12)
+        page.BackgroundTransparency = 1
+        page.BorderSizePixel = 0
+        page.ScrollBarThickness = 3
+        page.ScrollBarImageColor3 = Color3.fromRGB(80,80,80)
+        page.CanvasSize = UDim2.new()
+        page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        page.Visible = false
+        local layout = Instance.new("UIListLayout", page)
+        layout.Padding = UDim.new(0, 6); layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        pages[name] = { frame = page, button = btn }
+
+        btn.MouseButton1Click:Connect(function()
+            for _, v in pairs(pages) do v.button.BackgroundColor3 = Color3.fromRGB(45,45,45) end
+            btn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+            showPage(name)
+        end)
+
+        if not currentPage then
+            btn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+            showPage(name)
+        end
+        return page
+    end
+
+    local function mkColorPopup()
+        local popup = Instance.new("Frame", gui)
+        popup.Size = UDim2.new(0, 200, 0, 150)
+        popup.BackgroundColor3 = Color3.fromRGB(15,15,15)
+        popup.BorderSizePixel = 0
+        popup.Visible = false
+        popup.ZIndex = 100
+        Instance.new("UICorner", popup).CornerRadius = UDim.new(0, 6)
+        local ps = Instance.new("UIStroke", popup)
+        ps.Color = Color3.fromRGB(60,60,60); ps.Thickness = 1
+
+        local state = { color = Color3.fromRGB(255,255,255), callback = nil, channels = {} }
+
+        local function refresh()
+            for _, ch in ipairs(state.channels) do
+                local v = ch.name == "R" and state.color.R or ch.name == "G" and state.color.G or state.color.B
+                ch.fill.Size = UDim2.new(v, 0, 1, 0)
+                ch.label.Text = ch.name .. ": " .. math.floor(v * 255)
+            end
+            if state.callback then pcall(state.callback, state.color) end
+        end
+
+        for idx, chName in ipairs({ "R", "G", "B" }) do
+            local y = (idx - 1) * 28
+            local bar = Instance.new("Frame", popup)
+            bar.Size = UDim2.new(1, -20, 0, 22)
+            bar.Position = UDim2.new(0, 10, 0, 10 + y)
+            bar.BackgroundColor3 = Color3.fromRGB(30,30,30)
+            bar.BorderSizePixel = 0
+            Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 3)
+
+            local fill = Instance.new("Frame", bar)
+            fill.Size = UDim2.new(0, 0, 1, 0)
+            fill.BackgroundColor3 = Color3.fromRGB(86,76,251)
+            fill.BackgroundTransparency = 0.3
+            fill.BorderSizePixel = 0
+            Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 3)
+
+            local lbl = Instance.new("TextLabel", bar)
+            lbl.Size = UDim2.new(1, -8, 1, 0)
+            lbl.Position = UDim2.new(0, 6, 0, 0)
+            lbl.BackgroundTransparency = 1
+            lbl.Text = chName .. ": 0"
+            lbl.TextColor3 = Color3.fromRGB(220,220,220)
+            lbl.Font = Enum.Font.Gotham
+            lbl.TextSize = 11
+            lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+            local btn = Instance.new("TextButton", bar)
+            btn.Size = UDim2.new(1, 0, 1, 0)
+            btn.BackgroundTransparency = 1
+            btn.Text = ""
+
+            local dragging = false
+            local function setFromX(x)
+                local rel = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+                if chName == "R" then state.color = Color3.new(rel, state.color.G, state.color.B)
+                elseif chName == "G" then state.color = Color3.new(state.color.R, rel, state.color.B)
+                else state.color = Color3.new(state.color.R, state.color.G, rel) end
+                refresh()
+            end
+            btn.InputBegan:Connect(function(i)
+                if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true; setFromX(i.Position.X) end
+            end)
+            UIS.InputChanged:Connect(function(i)
+                if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then setFromX(i.Position.X) end
+            end)
+            UIS.InputEnded:Connect(function(i)
+                if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+            end)
+
+            table.insert(state.channels, { name = chName, fill = fill, label = lbl })
+        end
+
+        local close = Instance.new("TextButton", popup)
+        close.Size = UDim2.new(1, -20, 0, 22)
+        close.Position = UDim2.new(0, 10, 1, -30)
+        close.BackgroundColor3 = Color3.fromRGB(30,30,30)
+        close.Text = "Close"
+        close.TextColor3 = Color3.fromRGB(200,200,200)
+        close.Font = Enum.Font.Gotham; close.TextSize = 12
+        close.BorderSizePixel = 0
+        Instance.new("UICorner", close).CornerRadius = UDim.new(0, 3)
+        close.MouseButton1Click:Connect(function() popup.Visible = false end)
+
+        return {
+            open = function(posX, posY, color, cb)
+                state.color = color or Color3.fromRGB(255,255,255)
+                state.callback = cb
+                refresh()
+                popup.Position = UDim2.new(0, posX, 0, posY)
+                popup.Visible = true
+            end,
+        }
+    end
+
+    local globalPicker = mkColorPopup()
+
+    function api:AddFeature(sectionPage, name, opts)
+        opts = opts or {}
+        local row = Instance.new("Frame", sectionPage)
+        row.Size = UDim2.new(1, -8, 0, 32)
+        row.BackgroundColor3 = Color3.fromRGB(12,12,12)
+        row.BorderSizePixel = 0
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
+
+        local label = Instance.new("TextLabel", row)
+        label.Size = UDim2.new(0.6, 0, 1, 0)
+        label.Position = UDim2.new(0, 12, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = name
+        label.TextColor3 = Color3.fromRGB(200,200,200)
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Font = Enum.Font.Gotham; label.TextSize = 13
+
+        local type = opts.type or "toggle"
+        local handle = { sub = nil }
+
+        if type == "toggle" then
+            local pill = Instance.new("TextButton", row)
+            pill.Size = UDim2.new(0, 40, 0, 20)
+            pill.Position = UDim2.new(1, -52, 0.5, -10)
+            pill.BackgroundColor3 = opts.default and Color3.fromRGB(86,76,251) or Color3.fromRGB(30,30,30)
+            pill.Text = ""; pill.BorderSizePixel = 0; pill.AutoButtonColor = false
+            Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
+            local knob = Instance.new("Frame", pill)
+            knob.Size = UDim2.new(0, 16, 0, 16)
+            knob.Position = opts.default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+            knob.BackgroundColor3 = Color3.fromRGB(200,200,200)
+            knob.BorderSizePixel = 0
+            Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+            local state = opts.default or false
+
+            local function setState(v, silent)
+                state = v
+                pill.BackgroundColor3 = v and Color3.fromRGB(86,76,251) or Color3.fromRGB(30,30,30)
+                knob.Position = v and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+                if handle.sub then handle.sub.Visible = v end
+                if not silent and opts.callback then pcall(opts.callback, v) end
+            end
+            handle.Set = function(v) setState(v, true) end
+            pill.MouseButton1Click:Connect(function() setState(not state) end)
+
+        elseif type == "button" then
+            local btn = Instance.new("TextButton", row)
+            btn.Size = UDim2.new(0, 60, 0, 22)
+            btn.Position = UDim2.new(1, -72, 0.5, -11)
+            btn.BackgroundColor3 = Color3.fromRGB(30,30,30)
+            btn.Text = "Run"; btn.TextColor3 = Color3.fromRGB(200,200,200)
+            btn.Font = Enum.Font.Gotham; btn.TextSize = 12
+            btn.BorderSizePixel = 0; btn.AutoButtonColor = false
+            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+            btn.MouseButton1Click:Connect(function() if opts.callback then pcall(opts.callback) end end)
+
+        elseif type == "slider" then
+            local box = Instance.new("TextBox", row)
+            box.Size = UDim2.new(0, 90, 0, 22)
+            box.Position = UDim2.new(1, -102, 0.5, -11)
+            box.BackgroundColor3 = Color3.fromRGB(25,25,25)
+            box.Text = tostring(opts.default or opts.min or 0)
+            box.TextColor3 = Color3.fromRGB(180,180,180)
+            box.Font = Enum.Font.Gotham; box.TextSize = 11
+            box.ClearTextOnFocus = false
+            box.BorderSizePixel = 0
+            Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
+            box.FocusLost:Connect(function()
+                local n = tonumber(box.Text)
+                if n then
+                    n = math.clamp(n, opts.min or -math.huge, opts.max or math.huge)
+                    box.Text = tostring(n)
+                    if opts.callback then pcall(opts.callback, n) end
+                end
+            end)
+
+        elseif type == "color" then
+            local swatch = Instance.new("TextButton", row)
+            swatch.Size = UDim2.new(0, 40, 0, 20)
+            swatch.Position = UDim2.new(1, -52, 0.5, -10)
+            swatch.BackgroundColor3 = opts.default or Color3.fromRGB(255,255,255)
+            swatch.Text = ""; swatch.BorderSizePixel = 0; swatch.AutoButtonColor = false
+            Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 4)
+            local st2 = Instance.new("UIStroke", swatch)
+            st2.Color = Color3.fromRGB(80,80,80); st2.Thickness = 1
+            swatch.MouseButton1Click:Connect(function()
+                globalPicker.open(
+                    swatch.AbsolutePosition.X - 80,
+                    swatch.AbsolutePosition.Y + 26,
+                    swatch.BackgroundColor3,
+                    function(c)
+                        swatch.BackgroundColor3 = c
+                        if opts.callback then pcall(opts.callback, c) end
+                    end
+                )
+            end)
+        end
+
+        -- sub-features container
+        if opts.sub and type == "toggle" then
+            local sub = Instance.new("Frame", sectionPage)
+            sub.Size = UDim2.new(1, -8, 0, 0)
+            sub.BackgroundColor3 = Color3.fromRGB(8,8,8)
+            sub.BorderSizePixel = 0
+            sub.Visible = false
+            sub.AutomaticSize = Enum.AutomaticSize.Y
+            Instance.new("UICorner", sub).CornerRadius = UDim.new(0, 5)
+            local subPad = Instance.new("UIPadding", sub)
+            subPad.PaddingTop = UDim.new(0, 6)
+            subPad.PaddingBottom = UDim.new(0, 6)
+            subPad.PaddingLeft = UDim.new(0, 24)
+            subPad.PaddingRight = UDim.new(0, 12)
+            local subLayout = Instance.new("UIListLayout", sub)
+            subLayout.Padding = UDim.new(0, 4); subLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            handle.sub = sub
+
+            handle.AddSub = function(spec)
+                local st = spec.type or "toggle"
+                local srow = Instance.new("Frame", sub)
+                srow.Size = UDim2.new(1, 0, 0, 26)
+                srow.BackgroundTransparency = 1
+
+                local slabel = Instance.new("TextLabel", srow)
+                slabel.Size = UDim2.new(0.6, 0, 1, 0)
+                slabel.BackgroundTransparency = 1
+                slabel.Text = spec.name
+                slabel.TextColor3 = Color3.fromRGB(180,180,180)
+                slabel.TextXAlignment = Enum.TextXAlignment.Left
+                slabel.Font = Enum.Font.Gotham; slabel.TextSize = 12
+
+                if st == "toggle" then
+                    local pill = Instance.new("TextButton", srow)
+                    pill.Size = UDim2.new(0, 32, 0, 16)
+                    pill.Position = UDim2.new(1, -32, 0.5, -8)
+                    pill.BackgroundColor3 = spec.default and Color3.fromRGB(86,76,251) or Color3.fromRGB(30,30,30)
+                    pill.Text = ""; pill.BorderSizePixel = 0; pill.AutoButtonColor = false
+                    Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
+                    local knob = Instance.new("Frame", pill)
+                    knob.Size = UDim2.new(0, 12, 0, 12)
+                    knob.Position = spec.default and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
+                    knob.BackgroundColor3 = Color3.fromRGB(200,200,200)
+                    knob.BorderSizePixel = 0
+                    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+                    local state = spec.default or false
+                    pill.MouseButton1Click:Connect(function()
+                        state = not state
+                        pill.BackgroundColor3 = state and Color3.fromRGB(86,76,251) or Color3.fromRGB(30,30,30)
+                        knob.Position = state and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
+                        if spec.callback then pcall(spec.callback, state) end
+                    end)
+                elseif st == "slider" then
+                    local box = Instance.new("TextBox", srow)
+                    box.Size = UDim2.new(0, 80, 0, 20)
+                    box.Position = UDim2.new(1, -80, 0.5, -10)
+                    box.BackgroundColor3 = Color3.fromRGB(25,25,25)
+                    box.Text = tostring(spec.default or spec.min or 0)
+                    box.TextColor3 = Color3.fromRGB(180,180,180)
+                    box.Font = Enum.Font.Gotham; box.TextSize = 11
+                    box.ClearTextOnFocus = false; box.BorderSizePixel = 0
+                    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 3)
+                    box.FocusLost:Connect(function()
+                        local n = tonumber(box.Text)
+                        if n then
+                            n = math.clamp(n, spec.min or -math.huge, spec.max or math.huge)
+                            box.Text = tostring(n)
+                            if spec.callback then pcall(spec.callback, n) end
+                        end
+                    end)
+                elseif st == "button" then
+                    local btn = Instance.new("TextButton", srow)
+                    btn.Size = UDim2.new(0, 50, 0, 20)
+                    btn.Position = UDim2.new(1, -50, 0.5, -10)
+                    btn.BackgroundColor3 = Color3.fromRGB(30,30,30)
+                    btn.Text = "Run"; btn.TextColor3 = Color3.fromRGB(200,200,200)
+                    btn.Font = Enum.Font.Gotham; btn.TextSize = 11
+                    btn.BorderSizePixel = 0
+                    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 3)
+                    btn.MouseButton1Click:Connect(function()
+                        if spec.callback then pcall(spec.callback) end
+                    end)
+                elseif st == "color" then
+                    local swatch = Instance.new("TextButton", srow)
+                    swatch.Size = UDim2.new(0, 32, 0, 16)
+                    swatch.Position = UDim2.new(1, -32, 0.5, -8)
+                    swatch.BackgroundColor3 = spec.default or Color3.fromRGB(255,255,255)
+                    swatch.Text = ""; swatch.BorderSizePixel = 0; swatch.AutoButtonColor = false
+                    Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 3)
+                    local st2 = Instance.new("UIStroke", swatch)
+                    st2.Color = Color3.fromRGB(80,80,80); st2.Thickness = 1
+                    swatch.MouseButton1Click:Connect(function()
+                        globalPicker.open(
+                            swatch.AbsolutePosition.X - 80,
+                            swatch.AbsolutePosition.Y + 22,
+                            swatch.BackgroundColor3,
+                            function(c)
+                                swatch.BackgroundColor3 = c
+                                if spec.callback then pcall(spec.callback, c) end
+                            end
+                        )
+                    end)
+                end
+            end
+        end
+
+        return handle
+    end
+
+    -- right shift hide
+    UIS.InputBegan:Connect(function(i, gp)
+        if gp then return end
+        if i.KeyCode == Enum.KeyCode.RightShift then
+            root.Visible = not root.Visible
+        end
+    end)
+
+    hideBtn.MouseButton1Click:Connect(function() root.Visible = false end)
+    closeBtn.MouseButton1Click:Connect(function()
+        if getgenv().UN_ADDON and getgenv().UN_ADDON.unload then
+            getgenv().UN_ADDON.unload()
+        end
+    end)
+
+    return api
+end)()
+
+local WIN = UI
+
+-- ============================================================
+-- [MENU BUILD]
+-- ============================================================
+-- COMBAT
+local combatPage = WIN:AddSection("Combat")
+local aimF = WIN:AddFeature(combatPage, "Silent Aim", { type="toggle", default=true, sub=true,
+    callback=function(v) SA.enabled=v; if v then pcall(install_hooks) end end })
+aimF.AddSub({ name="WallBang", type="toggle", default=true, callback=function(v) SA.wb=v end })
+aimF.AddSub({ name="Quiet Peek", type="toggle", default=true, callback=function(v) SA.quiet=v end })
+aimF.AddSub({ name="Aim Head", type="toggle", default=false, callback=function(v)
+    SA.part = v and "Head" or "Torso"
+end })
+aimF.AddSub({ name="Anti Spam-Jumper", type="toggle", default=true, callback=function(v) SA.antiJump=v end })
+aimF.AddSub({ name="Auto Predict", type="toggle", default=true, callback=function(v) SA.autoPred=v end })
+aimF.AddSub({ name="Best Moment", type="toggle", default=true, callback=function(v) SA.bestMoment=v end })
+aimF.AddSub({ name="Confidence Floor", type="slider", min=0.1, max=0.9, default=0.5, callback=function(v) SA.confFloor=v end })
+aimF.AddSub({ name="Jump Radar", type="slider", min=5, max=100, default=25, callback=function(v) SA.jumpRadar=v end })
+aimF.AddSub({ name="FOV", type="slider", min=30, max=360, default=180, callback=function(v) SA.fov=v end })
+aimF.AddSub({ name="Angle Bias", type="slider", min=0, max=1, default=0.4, callback=function(v) SA.angleBias=v end })
+aimF.AddSub({ name="Lateral Bias", type="slider", min=1, max=2.5, default=1.6, callback=function(v) SA.lateralBias=v end })
+aimF.AddSub({ name="Switch Blend", type="slider", min=0, max=1, default=0.35, callback=function(v) SA.blend=v end })
+aimF.AddSub({ name="Aim Color", type="color", default=Color3.fromRGB(0,220,255), callback=function(c) FC.tracer=c end })
+
+local knF = WIN:AddFeature(combatPage, "Knife Silent", { type="toggle", default=false,
+    callback=function(v) KS.enabled=v end })
+
+local kaF = WIN:AddFeature(combatPage, "Kill Aura", { type="toggle", default=false, sub=true,
+    callback=function(v) KA.on=v end })
+kaF.AddSub({ name="Distance", type="slider", min=5, max=150, default=30, callback=function(v) KA.dist=v end })
+kaF.AddSub({ name="Kill All", type="button", callback=function() task.spawn(killAll) end })
+
+local gunF = WIN:AddFeature(combatPage, "Auto Gun", { type="toggle", default=false,
+    callback=function(v)
+        autograb_on = v
+        if v then
+            if not grab_desc_conn then grab_desc_conn = workspace.DescendantAdded:Connect(grab_desc_added) end
+            task.spawn(scan_guns)
+        else grab_desc_stop() end
+    end })
+
+-- WALL CHECK section
+local wcF = WIN:AddFeature(combatPage, "Wall Check", { type="toggle", default=false, sub=true,
+    callback=function(v) WC.on=v; if v then wc_start() else wc_clear() end end })
+wcF.AddSub({ name="Blocked Color", type="color", default=Color3.fromRGB(255,60,60),
+    callback=function(c) WC.blockedColor=c end })
+wcF.AddSub({ name="Visible Color", type="color", default=Color3.fromRGB(60,255,60),
+    callback=function(c) WC.visColor=c end })
+wcF.AddSub({ name="Show Visible", type="toggle", default=true, callback=function(v) WC.showVis=v end })
+wcF.AddSub({ name="Show Blocked", type="toggle", default=true, callback=function(v) WC.showBlocked=v end })
+wcF.AddSub({ name="Through Walls", type="toggle", default=true, callback=function(v)
+    WC.depth = v and "always" or "occluded"
 end })
 
 -- MOVE
-local TabMove = Window:MakeTab({ Name = "Move", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabMove:AddSection({ Name = "Walk" })
-TabMove:AddToggle({ Name = "Walkspeed", Default = false, Callback = function(v) MOVE.speedOn=v; applySpeed() end })
-TabMove:AddSlider({ Name = "Speed", Min = 1, Max = 500, Default = 50, Increment = 1,
-    ValueName = "studs/s", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) MOVE.speed=v; applySpeed() end })
-TabMove:AddToggle({ Name = "JumpPower", Default = false, Callback = function(v) MOVE.jumpOn=v; applyJump() end })
-TabMove:AddSlider({ Name = "Jump Power", Min = 1, Max = 500, Default = 50, Increment = 1,
-    ValueName = "power", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) MOVE.jump=v; applyJump() end })
-TabMove:AddToggle({ Name = "Infinite Jump", Default = false, Callback = function(v)
-    MOVE.infJump=v
-    if v then startInfJump() else stopInfJump() end
-end })
-TabMove:AddToggle({ Name = "HipHeight", Default = false, Callback = function(v) MOVE.hipOn=v; applyHip() end })
-TabMove:AddSlider({ Name = "Hip Height", Min = -5, Max = 50, Default = 2, Increment = 1,
-    ValueName = "studs", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) MOVE.hip=v; applyHip() end })
+local movePage = WIN:AddSection("Move")
+local spF = WIN:AddFeature(movePage, "Walkspeed", { type="toggle", default=false, sub=true,
+    callback=function(v) MOVE.speedOn=v; applySpeed() end })
+spF.AddSub({ name="Speed", type="slider", min=1, max=500, default=50, callback=function(v) MOVE.speed=v; applySpeed() end })
 
-TabMove:AddSection({ Name = "Fly" })
-TabMove:AddToggle({ Name = "Noclip", Default = false, Callback = function(v)
-    MOVE.noclip=v
-    if v then startNoclip() else stopNoclip() end
-end })
-TabMove:AddToggle({ Name = "Fly", Default = false, Callback = function(v)
-    MOVE.fly=v
-    if v then startFly() else stopFly() end
-end })
-TabMove:AddSlider({ Name = "Fly Speed", Min = 5, Max = 500, Default = 60, Increment = 5,
-    ValueName = "studs/s", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) MOVE.flySpeed=v end })
-TabMove:AddToggle({ Name = "Spin", Default = false, Callback = function(v)
-    MOVE.spin=v
-    if v then startSpin() else stopSpin() end
-end })
-TabMove:AddSlider({ Name = "Spin Speed", Min = 30, Max = 3000, Default = 720, Increment = 30,
-    ValueName = "deg/s", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) MOVE.spinSpeed=v end })
+local jpF = WIN:AddFeature(movePage, "JumpPower", { type="toggle", default=false, sub=true,
+    callback=function(v) MOVE.jumpOn=v; applyJump() end })
+jpF.AddSub({ name="Power", type="slider", min=1, max=500, default=50, callback=function(v) MOVE.jump=v; applyJump() end })
 
-TabMove:AddSection({ Name = "World" })
-TabMove:AddToggle({ Name = "Custom Gravity", Default = false, Callback = function(v) MOVE.gravOn=v; applyGrav() end })
-TabMove:AddSlider({ Name = "Gravity", Min = 0, Max = 1000, Default = 196, Increment = 1,
-    ValueName = "g", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) MOVE.grav=v; applyGrav() end })
-TabMove:AddButton({ Name = "Reset Move", Callback = function() moveReset() end })
-TabMove:AddButton({ Name = "TP to Map", Callback = function()
+WIN:AddFeature(movePage, "Infinite Jump", { type="toggle", default=false, callback=function(v)
+    MOVE.infJump=v; if v then startInfJump() else stopInfJump() end
+end })
+local hipF = WIN:AddFeature(movePage, "HipHeight", { type="toggle", default=false, sub=true,
+    callback=function(v) MOVE.hipOn=v; applyHip() end })
+hipF.AddSub({ name="Height", type="slider", min=-5, max=50, default=2, callback=function(v) MOVE.hip=v; applyHip() end })
+
+WIN:AddFeature(movePage, "Noclip", { type="toggle", default=false, callback=function(v)
+    MOVE.noclip=v; if v then startNoclip() else stopNoclip() end
+end })
+local flyF = WIN:AddFeature(movePage, "Fly", { type="toggle", default=false, sub=true,
+    callback=function(v) MOVE.fly=v; if v then startFly() else stopFly() end end })
+flyF.AddSub({ name="Fly Speed", type="slider", min=5, max=500, default=60, callback=function(v) MOVE.flySpeed=v end })
+
+local spinF = WIN:AddFeature(movePage, "Spin", { type="toggle", default=false, sub=true,
+    callback=function(v) MOVE.spin=v; if v then startSpin() else stopSpin() end end })
+spinF.AddSub({ name="Spin Speed", type="slider", min=30, max=3000, default=720, callback=function(v) MOVE.spinSpeed=v end })
+
+local gravF = WIN:AddFeature(movePage, "Custom Gravity", { type="toggle", default=false, sub=true,
+    callback=function(v) MOVE.gravOn=v; applyGrav() end })
+gravF.AddSub({ name="Gravity", type="slider", min=0, max=1000, default=196, callback=function(v) MOVE.grav=v; applyGrav() end })
+
+WIN:AddFeature(movePage, "Anti Fall", { type="toggle", default=false, callback=function(v) MOVE.antiFall=v end })
+WIN:AddFeature(movePage, "Anti Fling", { type="toggle", default=false, callback=function(v) fl.antifling=v end })
+WIN:AddFeature(movePage, "Ctrl+Click TP", { type="toggle", default=false, callback=function(v) MOVE.ctrltp=v end })
+WIN:AddFeature(movePage, "Reset Move", { type="button", callback=function() moveReset() end })
+WIN:AddFeature(movePage, "TP to Map", { type="button", callback=function()
     local best,bd=nil,math.huge
     local hrp=HRP(); if not hrp then return end
     for _,o in ipairs(workspace:GetDescendants()) do
-        if o:IsA("SpawnLocation") and o.Parent
-        and not string.find(tostring(o:GetFullName()),"Lobby") then
+        if o:IsA("SpawnLocation") and o.Parent and not string.find(tostring(o:GetFullName()),"Lobby") then
             local d=(o.Position-hrp.Position).Magnitude
             if d<bd then bd=d; best=o end
         end
     end
     if best then hrp.CFrame=best.CFrame+Vector3.new(0,5,0) end
 end })
-TabMove:AddButton({ Name = "TP to Lobby", Callback = function()
+WIN:AddFeature(movePage, "TP to Lobby", { type="button", callback=function()
     local hrp=HRP(); if not hrp then return end
     for _,o in ipairs(workspace:GetDescendants()) do
         if o:IsA("SpawnLocation") and string.find(tostring(o:GetFullName()),"Lobby") then
@@ -2165,44 +2375,34 @@ TabMove:AddButton({ Name = "TP to Lobby", Callback = function()
         end
     end
 end })
-TabMove:AddToggle({ Name = "Anti Fall", Default = false, Callback = function(v) MOVE.antiFall=v end })
-TabMove:AddToggle({ Name = "Anti Fling", Default = false, Callback = function(v) fl.antifling=v end })
-TabMove:AddToggle({ Name = "Ctrl+Click TP", Default = false, Callback = function(v) MOVE.ctrltp=v end })
 
--- TROLL — обновлённые режимы fling
-local TabTroll = Window:MakeTab({ Name = "Troll", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabTroll:AddSection({ Name = "Fling" })
-TabTroll:AddDropdown({
-    Name = "Fling Mode",
-    Default = "orbit",
-    Options = { "orbit", "slam", "spin", "anchor" },
-    Callback = function(v) FLING.mode = v; MakeNotif("Fling Mode", v, 2) end,
-})
-TabTroll:AddSlider({ Name = "Fling Force", Min = 1e6, Max = 9e9, Default = 9e8, Increment = 1e7,
-    ValueName = "N", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) FLING.force = v end })
-TabTroll:AddSlider({ Name = "Fling Duration", Min = 0.5, Max = 5, Default = 2.2, Increment = 0.1,
-    ValueName = "s", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) FLING.duration = v end })
-
-TabTroll:AddButton({ Name = "Fling Nearest", Callback = function() flingNearest() end })
-TabTroll:AddButton({ Name = "Fling All", Callback = function() flingAll() end })
-TabTroll:AddButton({ Name = "Fling Murderer", Callback = function()
+-- TROLL
+local trollPage = WIN:AddSection("Troll")
+local flingF = WIN:AddFeature(trollPage, "Fling", { type="toggle", default=false, sub=true,
+    callback=function(v) FLING.active=v end })
+flingF.AddSub({ name="Mode", type="button", callback=function()
+    local modes = { "orbit", "slam", "spin", "anchor" }
+    local idx = 1
+    for i, m in ipairs(modes) do if m == FLING.mode then idx = i end end
+    FLING.mode = modes[idx % #modes + 1]
+end })
+flingF.AddSub({ name="Force", type="slider", min=1e6, max=9e9, default=9e8, callback=function(v) FLING.force=v end })
+flingF.AddSub({ name="Duration", type="slider", min=0.5, max=5, default=2.2, callback=function(v) FLING.duration=v end })
+flingF.AddSub({ name="Nearest", type="button", callback=function() flingNearest() end })
+flingF.AddSub({ name="All", type="button", callback=function() flingAll() end })
+flingF.AddSub({ name="Murderer", type="button", callback=function()
     for _,p in ipairs(Players:GetPlayers()) do
         if p~=LP and alive(p) and cachedRole(p)=="m" then flingTarget(p); return end
     end
-    MakeNotif("Fling", "No murderer", 2)
 end })
-TabTroll:AddButton({ Name = "Fling Sheriff", Callback = function()
+flingF.AddSub({ name="Sheriff", type="button", callback=function()
     for _,p in ipairs(Players:GetPlayers()) do
         if p~=LP and alive(p) and cachedRole(p)=="s" then flingTarget(p); return end
     end
-    MakeNotif("Fling", "No sheriff", 2)
 end })
-TabTroll:AddButton({ Name = "Stop Troll", Callback = function() stopTroll() end })
+flingF.AddSub({ name="Stop", type="button", callback=function() stopTroll() end })
 
-TabTroll:AddSection({ Name = "Teleport" })
-TabTroll:AddButton({ Name = "TP to Murder", Callback = function()
+WIN:AddFeature(trollPage, "TP to Murder", { type="button", callback=function()
     for _,p in ipairs(Players:GetPlayers()) do
         if p~=LP and alive(p) and cachedRole(p)=="m" then
             local hrp=HRP(); local th=p.Character and p.Character:FindFirstChild("HumanoidRootPart")
@@ -2211,7 +2411,7 @@ TabTroll:AddButton({ Name = "TP to Murder", Callback = function()
         end
     end
 end })
-TabTroll:AddButton({ Name = "TP to Sheriff", Callback = function()
+WIN:AddFeature(trollPage, "TP to Sheriff", { type="button", callback=function()
     for _,p in ipairs(Players:GetPlayers()) do
         if p~=LP and alive(p) and cachedRole(p)=="s" then
             local hrp=HRP(); local th=p.Character and p.Character:FindFirstChild("HumanoidRootPart")
@@ -2220,232 +2420,119 @@ TabTroll:AddButton({ Name = "TP to Sheriff", Callback = function()
         end
     end
 end })
-TabTroll:AddButton({ Name = "TP to Random", Callback = function()
-    local all = {}
-    for _,p in ipairs(Players:GetPlayers()) do
-        if p~=LP and alive(p) then all[#all+1]=p end
-    end
-    if #all==0 then return end
-    local tgt = all[math.random(1,#all)]
-    local hrp=HRP(); local th=tgt.Character and tgt.Character:FindFirstChild("HumanoidRootPart")
-    if hrp and th then hrp.CFrame=th.CFrame+Vector3.new(0,0,3) end
-end })
-TabTroll:AddButton({ Name = "Dizzy", Callback = function()
+WIN:AddFeature(trollPage, "Dizzy", { type="button", callback=function()
     local h=hum(); if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
     MOVE.spin=true; pcall(startSpin)
     task.delay(3, function() MOVE.spin=false; pcall(stopSpin) end)
 end })
 
 -- VISUALS
-local TabVisuals = Window:MakeTab({ Name = "Visuals", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-
-local function rebuildEffect(key)
-    if key=="trail"     and fl.trail     then pcall(clTrail); pcall(mkTrail) end
-    if key=="parts"     and fl.parts     then pcall(clParts); pcall(mkParts) end
-    if key=="hat"       and fl.hat       then pcall(clHat);   pcall(mkHat)   end
-    if key=="glow"      and fl.glow      then pcall(clGlow);  pcall(mkGlow)  end
-    if key=="snow"      and fl.snow      then pcall(clSnow);  pcall(mkSnow)  end
-    if key=="lightning" and fl.lightning then pcall(clLight); pcall(mkLight) end
-    if key=="orbAura"   and fl.orbAura   then pcall(clOrb);   pcall(mkOrb)   end
-    if key=="foot"      and fl.foot      then pcall(clFoot);  pcall(mkFoot)  end
-    if key=="ghost"     and fl.ghost     then pcall(clGhost); pcall(mkGhost) end
-    if key=="jump"      and fl.jump      then pcall(clJump);  pcall(mkJump)  end
-    if key=="skyDust"   and fl.skyDust   then pcall(clSky);   pcall(mkSky)   end
-    if key=="bounce"    and fl.bounce    then pcall(clBo);    pcall(mkBo)    end
-    if key=="atmo"      and fl.atmo      then pcall(clAtmo);  pcall(mkAtmo)  end
-    if key=="bt"        and BT.on        then pcall(bt_destroy); pcall(bt_build) end
+local vizPage = WIN:AddSection("Visuals")
+local function mkToggleFeature(name, flagKey, mkFn, clFn)
+    return WIN:AddFeature(vizPage, name, { type="toggle", default=false, sub=true,
+        callback=function(v) fl[flagKey]=v; if v then mkFn() else clFn() end end })
 end
 
-TabVisuals:AddSection({ Name = "Character" })
+local trailF = mkToggleFeature("Neon Trail", "trail", mkTrail, clTrail)
+trailF.AddSub({ name="Color", type="color", default=FC.trail, callback=function(c) FC.trail=c; rebuildEffect("trail") end })
 
-TabVisuals:AddToggle({ Name = "Neon Trail", Default = false, Callback = function(v)
-    fl.trail=v; if v then mkTrail() else clTrail() end
-end })
-TabVisuals:AddColorpicker({ Name = "Trail Color", Default = FC.trail, Callback = function(c)
-    FC.trail=c; rebuildEffect("trail")
-end })
+local hatF = mkToggleFeature("China Hat", "hat", mkHat, clHat)
+hatF.AddSub({ name="Color", type="color", default=FC.hat, callback=function(c) FC.hat=c; rebuildEffect("hat") end })
 
-TabVisuals:AddToggle({ Name = "China Hat", Default = false, Callback = function(v)
-    fl.hat=v; if v then mkHat() else clHat() end
-end })
-TabVisuals:AddColorpicker({ Name = "Hat Color", Default = FC.hat, Callback = function(c)
-    FC.hat=c; rebuildEffect("hat")
-end })
+local glowF = mkToggleFeature("Body Glow", "glow", mkGlow, clGlow)
+glowF.AddSub({ name="Color", type="color", default=FC.glow, callback=function(c) FC.glow=c; rebuildEffect("glow") end })
 
-TabVisuals:AddToggle({ Name = "Body Glow", Default = false, Callback = function(v)
-    fl.glow=v; if v then mkGlow() else clGlow() end
-end })
-TabVisuals:AddColorpicker({ Name = "Glow Color", Default = FC.glow, Callback = function(c)
-    FC.glow=c; rebuildEffect("glow")
-end })
+mkToggleFeature("Rainbow Body", "rainbow", mkRB, clRB)
 
-TabVisuals:AddToggle({ Name = "Rainbow Body", Default = false, Callback = function(v)
-    fl.rainbow=v; if v then mkRB() else clRB() end
-end })
+local auraF = mkToggleFeature("Aura Particles", "parts", mkParts, clParts)
+auraF.AddSub({ name="Color", type="color", default=FC.parts, callback=function(c) FC.parts=c; rebuildEffect("parts") end })
 
-TabVisuals:AddSection({ Name = "Particles" })
+local skyF = mkToggleFeature("Sky Dust", "skyDust", mkSky, clSky)
+skyF.AddSub({ name="Color", type="color", default=FC.skyDust, callback=function(c) FC.skyDust=c; rebuildEffect("skyDust") end })
+skyF.AddSub({ name="Hearts", type="toggle", default=false, callback=function(v) skyHeart=v; if fl.skyDust then clSky(); mkSky() end end })
 
-TabVisuals:AddToggle({ Name = "Aura Particles", Default = false, Callback = function(v)
-    fl.parts=v; if v then mkParts() else clParts() end
-end })
-TabVisuals:AddColorpicker({ Name = "Aura Color", Default = FC.parts, Callback = function(c)
-    FC.parts=c; rebuildEffect("parts")
-end })
+local snowF = mkToggleFeature("Snow Aura", "snow", mkSnow, clSnow)
+snowF.AddSub({ name="Color", type="color", default=FC.snow, callback=function(c) FC.snow=c; rebuildEffect("snow") end })
 
-TabVisuals:AddToggle({ Name = "Sky Dust", Default = false, Callback = function(v)
-    fl.skyDust=v; if v then mkSky() else clSky() end
-end })
-TabVisuals:AddColorpicker({ Name = "SkyDust Color", Default = FC.skyDust, Callback = function(c)
-    FC.skyDust=c; rebuildEffect("skyDust")
-end })
+local boF = mkToggleFeature("Bounce Particles", "bounce", mkBo, clBo)
+boF.AddSub({ name="Color", type="color", default=FC.bounce, callback=function(c) FC.bounce=c; rebuildEffect("bounce") end })
+boF.AddSub({ name="Hearts", type="toggle", default=false, callback=function(v) boHeart=v; if fl.bounce then clBo(); mkBo() end end })
 
-TabVisuals:AddToggle({ Name = "Hearts Sky", Default = false, Callback = function(v)
-    skyHeart=v; if fl.skyDust then clSky(); mkSky() end
-end })
+local lightF = mkToggleFeature("Lightning Aura", "lightning", mkLight, clLight)
+lightF.AddSub({ name="Color", type="color", default=FC.lightning, callback=function(c) FC.lightning=c; rebuildEffect("lightning") end })
 
-TabVisuals:AddToggle({ Name = "Snow Aura", Default = false, Callback = function(v)
-    fl.snow=v; if v then mkSnow() else clSnow() end
-end })
-TabVisuals:AddColorpicker({ Name = "Snow Color", Default = FC.snow, Callback = function(c)
-    FC.snow=c; rebuildEffect("snow")
-end })
+local orbF = mkToggleFeature("Orb Aura", "orbAura", mkOrb, clOrb)
+orbF.AddSub({ name="Color", type="color", default=FC.orbAura, callback=function(c) FC.orbAura=c; rebuildEffect("orbAura") end })
 
-TabVisuals:AddToggle({ Name = "Bounce Particles", Default = false, Callback = function(v)
-    fl.bounce=v; if v then mkBo() else clBo() end
-end })
-TabVisuals:AddColorpicker({ Name = "Bounce Color", Default = FC.bounce, Callback = function(c)
-    FC.bounce=c; rebuildEffect("bounce")
-end })
+local ghostF = mkToggleFeature("Ghost Trail", "ghost", mkGhost, clGhost)
+ghostF.AddSub({ name="Color", type="color", default=FC.ghost, callback=function(c) FC.ghost=c; rebuildEffect("ghost") end })
 
-TabVisuals:AddToggle({ Name = "Hearts Bounce", Default = false, Callback = function(v)
-    boHeart=v; if fl.bounce then clBo(); mkBo() end
-end })
+local footF = mkToggleFeature("Footsteps", "foot", mkFoot, clFoot)
+footF.AddSub({ name="Color", type="color", default=FC.foot, callback=function(c) FC.foot=c; rebuildEffect("foot") end })
 
-TabVisuals:AddToggle({ Name = "Lightning Aura", Default = false, Callback = function(v)
-    fl.lightning=v; if v then mkLight() else clLight() end
-end })
-TabVisuals:AddColorpicker({ Name = "Lightning Color", Default = FC.lightning, Callback = function(c)
-    FC.lightning=c; rebuildEffect("lightning")
-end })
-
-TabVisuals:AddToggle({ Name = "Orb Aura", Default = false, Callback = function(v)
-    fl.orbAura=v; if v then mkOrb() else clOrb() end
-end })
-TabVisuals:AddColorpicker({ Name = "Orb Color", Default = FC.orbAura, Callback = function(c)
-    FC.orbAura=c; rebuildEffect("orbAura")
-end })
-
-TabVisuals:AddToggle({ Name = "Ghost Trail", Default = false, Callback = function(v)
-    fl.ghost=v; if v then mkGhost() else clGhost() end
-end })
-TabVisuals:AddColorpicker({ Name = "Ghost Color", Default = FC.ghost, Callback = function(c)
-    FC.ghost=c; rebuildEffect("ghost")
-end })
-
-TabVisuals:AddToggle({ Name = "Footsteps", Default = false, Callback = function(v)
-    fl.foot=v; if v then mkFoot() else clFoot() end
-end })
-TabVisuals:AddColorpicker({ Name = "Foot Color", Default = FC.foot, Callback = function(c)
-    FC.foot=c; rebuildEffect("foot")
-end })
-
-TabVisuals:AddSection({ Name = "Effects" })
-
-TabVisuals:AddToggle({ Name = "Bullet Tracer", Default = false, Callback = function(v)
-    TRACE.on=v; fl.tracer=v
-    if v then task.spawn(connect_trace_fn) else disableTracer_fn() end
-end })
-TabVisuals:AddColorpicker({ Name = "Tracer Color", Default = FC.tracer, Callback = function(c)
-    FC.tracer=c
-end })
-
--- MODEL
-local TabModel = Window:MakeTab({ Name = "Model", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabModel:AddToggle({ Name = "Headless", Default = false, Callback = function(v)
-    fl.headless=v; pcall(applySkinAll)
-end })
+local traceF = WIN:AddFeature(vizPage, "Bullet Tracer", { type="toggle", default=false, sub=true,
+    callback=function(v) TRACE.on=v; fl.tracer=v
+        if v then task.spawn(connect_trace_fn) else disableTracer_fn() end
+    end })
+traceF.AddSub({ name="Color", type="color", default=FC.tracer, callback=function(c) FC.tracer=c end })
 
 -- JUMP
-local TabJump = Window:MakeTab({ Name = "Jump", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabJump:AddToggle({ Name = "Jump Circles", Default = false, Callback = function(v)
-    fl.jump=v; if v then mkJump() else clJump() end
-end })
-TabJump:AddColorpicker({ Name = "Jump Ring Color", Default = FC.jump, Callback = function(c)
-    FC.jump=c; rebuildEffect("jump")
-end })
-TabJump:AddSection({ Name = "Style" })
-TabJump:AddButton({ Name = "Classic",        Callback = function() jStyle = "Classic"   end })
-TabJump:AddButton({ Name = "Double Ring",    Callback = function() jStyle = "Double"    end })
-TabJump:AddButton({ Name = "Triple Ripple",  Callback = function() jStyle = "Ripple"    end })
-TabJump:AddButton({ Name = "Particle Burst", Callback = function() jStyle = "Particles" end })
+local jumpPage = WIN:AddSection("Jump")
+local jumpF = WIN:AddFeature(jumpPage, "Jump Circles", { type="toggle", default=false, sub=true,
+    callback=function(v) fl.jump=v; if v then mkJump() else clJump() end end })
+jumpF.AddSub({ name="Color", type="color", default=FC.jump, callback=function(c) FC.jump=c; rebuildEffect("jump") end })
+jumpF.AddSub({ name="Classic", type="button", callback=function() jStyle="Classic" end })
+jumpF.AddSub({ name="Double", type="button", callback=function() jStyle="Double" end })
+jumpF.AddSub({ name="Ripple", type="button", callback=function() jStyle="Ripple" end })
+jumpF.AddSub({ name="Particles", type="button", callback=function() jStyle="Particles" end })
 
 -- WORLD
-local TabWorld = Window:MakeTab({ Name = "World", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabWorld:AddToggle({ Name = "Cyberpunk Atmo", Default = false, Callback = function(v)
-    fl.atmo=v; if v then mkAtmo() else clAtmo() end
-end })
-TabWorld:AddColorpicker({ Name = "Atmo Color", Default = FC.atmo, Callback = function(c)
-    FC.atmo=c; rebuildEffect("atmo")
-end })
-TabWorld:AddToggle({ Name = "FullBright", Default = false, Callback = function(v) fl.fb=v; if v then mkFB() else clFB() end end })
-TabWorld:AddToggle({ Name = "Skybox", Default = false, Callback = function(v) fl.sky=v; if v then mkSkybox() else clSkybox() end end })
-TabWorld:AddToggle({ Name = "Bloom", Default = false, Callback = function(v) fl.bloom=v; if v then mkBloom() else clBloom() end end })
-TabWorld:AddSection({ Name = "Time" })
-TabWorld:AddButton({ Name = "Day",    Callback = function() applyTime("Day")    end })
-TabWorld:AddButton({ Name = "Sunset", Callback = function() applyTime("Sunset") end })
-TabWorld:AddButton({ Name = "Night",  Callback = function() applyTime("Night")  end })
-TabWorld:AddButton({ Name = "Cyber",  Callback = function() applyTime("Cyber")  end })
-TabWorld:AddToggle({ Name = "Fog", Default = false, Callback = function(v) fl._fog=v; toggleFog(v) end })
+local worldPage = WIN:AddSection("World")
+local atmoF = WIN:AddFeature(worldPage, "Cyberpunk Atmo", { type="toggle", default=false, sub=true,
+    callback=function(v) fl.atmo=v; if v then mkAtmo() else clAtmo() end end })
+atmoF.AddSub({ name="Color", type="color", default=FC.atmo, callback=function(c) FC.atmo=c; rebuildEffect("atmo") end })
+
+WIN:AddFeature(worldPage, "FullBright", { type="toggle", default=false, callback=function(v) fl.fb=v; if v then mkFB() else clFB() end end })
+WIN:AddFeature(worldPage, "Skybox", { type="toggle", default=false, callback=function(v) fl.sky=v; if v then mkSkybox() else clSkybox() end end })
+WIN:AddFeature(worldPage, "Bloom", { type="toggle", default=false, callback=function(v) fl.bloom=v; if v then mkBloom() else clBloom() end end })
+WIN:AddFeature(worldPage, "Day", { type="button", callback=function() applyTime("Day") end })
+WIN:AddFeature(worldPage, "Sunset", { type="button", callback=function() applyTime("Sunset") end })
+WIN:AddFeature(worldPage, "Night", { type="button", callback=function() applyTime("Night") end })
+WIN:AddFeature(worldPage, "Cyber", { type="button", callback=function() applyTime("Cyber") end })
+WIN:AddFeature(worldPage, "Fog", { type="toggle", default=false, callback=function(v) fl._fog=v; toggleFog(v) end })
 
 -- ESP
-local TabEsp = Window:MakeTab({ Name = "ESP", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabEsp:AddToggle({ Name = "Role ESP", Default = false, Callback = function(v) fl.esp=v; if v then mkESP() else clESP() end end })
-TabEsp:AddToggle({ Name = "Ghost ESP", Default = true, Callback = function(v) fl.espGhost=v end })
-TabEsp:AddToggle({ Name = "Role Tag (text)", Default = false, Callback = function(v)
+local espPage = WIN:AddSection("ESP")
+WIN:AddFeature(espPage, "Role ESP", { type="toggle", default=false, callback=function(v) fl.esp=v; if v then mkESP() else clESP() end end })
+WIN:AddFeature(espPage, "Ghost ESP", { type="toggle", default=true, callback=function(v) fl.espGhost=v end })
+WIN:AddFeature(espPage, "Role Tag", { type="toggle", default=false, callback=function(v)
     fl.roleTag=v
     if not v then for pl in pairs(espTxtTags) do detachRoleTag(pl) end end
 end })
 
--- THEME
-local TabTheme = Window:MakeTab({ Name = "Theme", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabTheme:AddSection({ Name = "Menu Theme" })
-TabTheme:AddColorpicker({
-    Name = "Accent Color",
-    Default = Color3.fromRGB(86,76,251),
-    Callback = function(c) pcall(function() OrionLib:ChangeColor("Accent", c) end) end
-})
-TabTheme:AddColorpicker({
-    Name = "Background",
-    Default = Color3.fromRGB(26,32,58),
-    Callback = function(c) pcall(function() OrionLib:ChangeColor("Background", c) end) end
-})
-TabTheme:AddColorpicker({
-    Name = "Element",
-    Default = Color3.fromRGB(38,45,71),
-    Callback = function(c) pcall(function() OrionLib:ChangeColor("Element", c) end) end
-})
-
 -- EXTRA
-local TabExtra = Window:MakeTab({ Name = "Extra", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-TabExtra:AddToggle({ Name = "Kill Lightning", Default = true, Callback = function(v) killOn=v end })
-TabExtra:AddToggle({ Name = "Backtrack", Default = false, Callback = function(v)
-    BT.on=v
-    if v then task.spawn(bt_build) end
-end })
-TabExtra:AddColorpicker({ Name = "Backtrack Color", Default = FC.bt, Callback = function(c)
-    FC.bt=c; rebuildEffect("bt")
-end })
-TabExtra:AddToggle({ Name = "Anti AFK", Default = false, Callback = function(v) fl.noafk=v end })
-TabExtra:AddButton({ Name = "Clear Particles", Callback = function()
+local extraPage = WIN:AddSection("Extra")
+WIN:AddFeature(extraPage, "Kill Lightning", { type="toggle", default=true, callback=function(v) killOn=v end })
+local btF = WIN:AddFeature(extraPage, "Backtrack", { type="toggle", default=false, sub=true,
+    callback=function(v) BT.on=v; if v then task.spawn(bt_build) end end })
+btF.AddSub({ name="Color", type="color", default=FC.bt, callback=function(c) FC.bt=c; rebuildEffect("bt") end })
+WIN:AddFeature(extraPage, "Anti AFK", { type="toggle", default=false, callback=function(v) fl.noafk=v end })
+WIN:AddFeature(extraPage, "Clear Particles", { type="button", callback=function()
     for _,p in ipairs(workspace:GetDescendants()) do
         if p:IsA("ParticleEmitter") then p:Destroy() end
     end
 end })
 
+-- MODEL
+local modelPage = WIN:AddSection("Model")
+WIN:AddFeature(modelPage, "Headless", { type="toggle", default=false, callback=function(v)
+    fl.headless=v; pcall(applySkinAll)
+end })
+
 -- ============================================================
--- [BIND LISTENER]
+-- [CONNECTIONS]
 -- ============================================================
-local function bindListener(input, gp)
+ADDON.bindConn = UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1 and MOVE.ctrltp then
         if UIS:IsKeyDown(Enum.KeyCode.LeftControl) or UIS:IsKeyDown(Enum.KeyCode.RightControl) then
@@ -2453,13 +2540,9 @@ local function bindListener(input, gp)
             if hrp and m and m.Hit then
                 pcall(function() hrp.CFrame = CFrame.new(m.Hit.Position + Vector3.new(0,5,0)) end)
             end
-            return
         end
     end
-end
-
-ADDON.bindConn = UIS.InputBegan:Connect(bindListener)
-
+end)
 ADDON.idleConn = LP.Idled:Connect(function()
     if fl.noafk and ADDON.loaded then
         pcall(function()
@@ -2469,35 +2552,23 @@ ADDON.idleConn = LP.Idled:Connect(function()
     end
 end)
 
--- ============================================================
--- [MAIN LOOP]
--- ============================================================
 ADDON.hb = RS.Heartbeat:Connect(function()
     if not ADDON.loaded then return end
     pcall(function()
         for k in pairs(SA_phase) do
             local h = k and k:FindFirstChildOfClass("Humanoid")
-            if not k or not k.Parent or not h or h.Health <= 0 then
-                SA_phase[k] = nil
-            end
+            if not k or not k.Parent or not h or h.Health <= 0 then SA_phase[k] = nil end
         end
-
         if not target_p or not target_p.Character or not target_p.Character.Parent then
-            SA_lock.lastChar = nil
-            SA_lock.lastPos = nil
-            SA_lock.blendT = 0
+            SA_lock.lastChar = nil; SA_lock.lastPos = nil; SA_lock.blendT = 0
         end
-
         local now = os.clock()
         if now - (ADDON.role_acc or 0) >= 0.08 then
-            ADDON.role_acc = now
-            refresh_target()
+            ADDON.role_acc = now; refresh_target()
         end
-        sample_ping()
-        ka_tick()
+        sample_ping(); ka_tick()
         if fl.roleTag and now - (ADDON.rtag_acc or 0) >= 0.25 then
-            ADDON.rtag_acc = now
-            pcall(updateRoleTags)
+            ADDON.rtag_acc = now; pcall(updateRoleTags)
         end
         if fl.antifling and not MOVE.fly then
             local ac = LP.Character
@@ -2514,8 +2585,7 @@ ADDON.hb = RS.Heartbeat:Connect(function()
             end
         end
         if now - (ADDON.hook_acc or 0) >= 1 then
-            ADDON.hook_acc = now
-            install_hooks()
+            ADDON.hook_acc = now; install_hooks()
             if TRACE.on then connect_trace_fn() end
         end
     end)
@@ -2561,19 +2631,16 @@ task.spawn(function()
     startAntiJump()
 end)
 
--- ============================================================
--- [UNLOAD]
--- ============================================================
 ADDON.unload = function()
     ADDON.loaded = false
     SA.enabled=false; KS.enabled=false; KA.on=false
-    TRACE.on=false; autograb_on=false; BT.on=false
-    grab_desc_stop()
+    TRACE.on=false; autograb_on=false; BT.on=false; WC.on=false
+    grab_desc_stop(); wc_clear()
     getgenv().KNIFE_AIM_RESOLVE = nil
     moveReset(); stopTroll(); stopAntiJump()
     pcall(restore_wb)
     workspace.Gravity = 196.2
-    safe_disconnect(ADDON.hb);   ADDON.hb=nil
+    safe_disconnect(ADDON.hb); ADDON.hb=nil
     safe_disconnect(ADDON.bindConn); ADDON.bindConn=nil
     safe_disconnect(ADDON.idleConn); ADDON.idleConn=nil
     safe_disconnect(TRACE.conn); TRACE.conn=nil
@@ -2593,14 +2660,9 @@ ADDON.unload = function()
         end
         WSH.hooked = nil; WSH.m = nil
     end
-    pcall(function()
-        local cg = game.CoreGui:FindFirstChild("Orion")
-        if cg then cg:Destroy() end
-    end)
+    safe_destroy(UI.gui)
     getgenv().UN_ADDON = nil
     print("[addon] unloaded")
 end
 
-OrionLib:Init()
-MakeNotif("StarWare", "Loaded · right shift to hide menu", 4)
-print("[addon] v3 ready — Orion UI (Qanuir fork)")
+print("[StarWare] loaded В· right shift toggle")
