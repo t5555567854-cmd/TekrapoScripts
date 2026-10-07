@@ -2,8 +2,7 @@
 --!nolint
 -- ============================================================
 -- StarWare v3 · Orion UI (Qanuir fork)
--- aim: FOV · angle-bias · lateral-bias · p90-rtt · двухпроходный лид · weighted head
--- fling: orbit · slam · spin · anchor-break
+-- aim intelligence: anti-spam-jumper · auto-predict · best-moment
 -- ============================================================
 if getgenv().UN_ADDON and getgenv().UN_ADDON.loaded then
     pcall(function() getgenv().UN_ADDON.unload() end)
@@ -57,13 +56,9 @@ end
 -- [STATE]
 -- ============================================================
 local SA = { enabled=true, part="Torso", quiet=true, wb=true, wbTemp=nil, antiJump=true,
-    autoPred=true, bestMoment=true, jumpRadar=25, confFloor=0.5,
-    fov=180, angleBias=0.4, lateralBias=1.6, blend=0.35 }
-
+    autoPred=true, bestMoment=true, jumpRadar=25, confFloor=0.5 }
 local SA_hist = {}
 local SA_phase = {}
-local SA_lock = { lastChar=nil, blendT=0, lastPos=nil }
-
 local KS = { enabled=false }
 local KA = { on=false, dist=30, last=0 }
 local TRACE = { on=false, conn=nil }
@@ -80,14 +75,6 @@ local MOVE = { speedOn=false, speed=50, jumpOn=false, jump=50, hipOn=false, hip=
 local moveConns = { infJump=nil, noclip=nil, nc={} }
 local flyConn, spinConn
 local antiJumpConn = nil
-
--- fling config
-local FLING = {
-    mode = "orbit",         -- orbit | slam | spin | anchor
-    force = 9e8,
-    duration = 2.2,
-    active = false,
-}
 
 local TROLL = { flinging=false }
 
@@ -185,127 +172,54 @@ local function LT(c) return Color3.new(math.min(1,c.R*1.4),math.min(1,c.G*1.4),m
 local rp=RaycastParams.new()
 rp.FilterType=Enum.RaycastFilterType.Exclude
 local EC={ rtt=0, jitter=0, seen=false }
-local EC_samples = {}
-
-local function push_rtt(v)
-    table.insert(EC_samples, v)
-    if #EC_samples > 12 then table.remove(EC_samples, 1) end
-end
-local function rtt_p90()
-    if #EC_samples == 0 then return EC.rtt end
-    local s = table.clone(EC_samples)
-    table.sort(s)
-    return s[math.max(1, math.floor(#s * 0.9))]
-end
-
-local function SA_rayBlocked(a, b, ignore)
-    local list = { workspace.CurrentCamera }
-    for _, x in ipairs(ignore or {}) do table.insert(list, x) end
-    local p = RaycastParams.new()
-    p.FilterType = Enum.RaycastFilterType.Exclude
-    for _ = 1, 8 do
-        p.FilterDescendantsInstances = list
-        local hit = workspace:Raycast(a, b - a, p)
-        if not hit then return false end
-        local i = hit.Instance
-        if i.Transparency >= 0.9 or not i.CanCollide then
-            table.insert(list, i)
-        else
-            return true
-        end
-    end
-    return true
-end
-
-local SA_BODY = { "UpperTorso", "Torso", "LowerTorso", "Head", "HumanoidRootPart",
-    "RightUpperArm", "LeftUpperArm", "Right Arm", "Left Arm" }
-
-local BODY_WEIGHT = {
-    Head=3.0, UpperTorso=1.5, Torso=1.5, LowerTorso=1.0,
-    HumanoidRootPart=0.5, RightUpperArm=0.6, LeftUpperArm=0.6,
-    ["Right Arm"]=0.6, ["Left Arm"]=0.6,
-}
-
-local function SA_anyVisible(targetChar, origin)
-    for _, n in ipairs(SA_BODY) do
-        local pt = targetChar:FindFirstChild(n)
-        if pt and pt:IsA("BasePart") then
-            if not SA_rayBlocked(origin, pt.Position, { targetChar }) then return true end
-        end
-    end
-    return false
-end
-
-local function SA_targetScore(p, camPos, camLook)
-    local c = p.Character
-    if not c then return math.huge end
-    local head = c:FindFirstChild("Head")
-    local hrp  = c:FindFirstChild("HumanoidRootPart")
-    local h    = c:FindFirstChildOfClass("Humanoid")
-    if not head or not hrp or not h then return math.huge end
-
-    local toHead = head.Position - camPos
-    local dist = toHead.Magnitude
-    if dist < 0.5 then dist = 0.5 end
-
-    local angle = math.deg(math.acos(math.clamp(camLook:Dot(toHead.Unit), -1, 1)))
-    if angle > SA.fov * 0.5 then return math.huge end
-
-    local jumpMul = 1
-    if SA.antiJump and h.FloorMaterial == Enum.Material.Air then
-        local vy = hrp.AssemblyLinearVelocity.Y
-        if vy > 8 then jumpMul = 1.6
-        elseif vy > 0 then jumpMul = 1.1
-        elseif vy > -25 then jumpMul = 0.85
-        else jumpMul = 0.6 end
-    end
-
-    local occluded = SA_rayBlocked(camPos, head.Position, { c })
-    local anglePenalty = 1 + (angle / math.max(SA.fov, 1)) * SA.angleBias * 4
-    local score = dist * anglePenalty * jumpMul
-    if occluded then score = score * 1.4 end
-
-    return score
-end
 
 local function refresh_target()
     refreshRoleCache()
     if not Cam then Cam = workspace.CurrentCamera end
     if not Cam then return end
 
-    local camPos  = Cam.CFrame.Position
-    local camLook = Cam.CFrame.LookVector
-
+    local keepCurrent = false
+    local curDist = math.huge
     if target_p and target_p.Character then
         local h = target_p.Character:FindFirstChild("Humanoid")
-        if h and h.Health > 0 and cachedRole(target_p) == "m" then
-            local s = SA_targetScore(target_p, camPos, camLook)
-            if s < math.huge then
-                local best, bs = nil, s / 1.4
-                for _, p in ipairs(Players:GetPlayers()) do
-                    if p ~= LP and p ~= target_p and alive(p) and cachedRole(p) == "m" then
-                        local ps = SA_targetScore(p, camPos, camLook)
-                        if ps < bs then bs = ps; best = p end
-                    end
-                end
-                if not best then return end
+        local hd = target_p.Character:FindFirstChild("Head")
+        local hrp = target_p.Character:FindFirstChild("HumanoidRootPart")
+        if h and h.Health > 0 and hd and cachedRole(target_p) == "m" then
+            keepCurrent = true
+            curDist = (hd.Position - Cam.CFrame.Position).Magnitude
+            if SA.antiJump and hrp then
+                local vy = hrp.AssemblyLinearVelocity.Y
+                if vy > 8 then curDist = curDist * 1.5
+                elseif vy > 0 then curDist = curDist * 1.0
+                elseif vy > -25 then curDist = curDist * 0.7
+                else curDist = curDist * 0.5 end
             end
         end
     end
 
-    local best, bs = nil, math.huge
+    local best, bd = nil, math.huge
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LP and alive(p) and cachedRole(p) == "m" then
-            local s = SA_targetScore(p, camPos, camLook)
-            if s < bs then bs = s; best = p end
+            local h = p.Character and p.Character:FindFirstChild("Head")
+            local hrp = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+            local hv = p.Character and p.Character:FindFirstChildOfClass("Humanoid")
+            if h and hrp then
+                local d = (h.Position - Cam.CFrame.Position).Magnitude
+                if SA.antiJump and hv and hv.FloorMaterial == Enum.Material.Air then
+                    local vy = hrp.AssemblyLinearVelocity.Y
+                    if vy > 8 then d = d * 1.5
+                    elseif vy > 0 then d = d * 1.0
+                    elseif vy > -25 then d = d * 0.7
+                    else d = d * 0.5 end
+                end
+                if d < bd then bd = d; best = p end
+            end
         end
     end
 
+    if keepCurrent and best ~= target_p and curDist < bd * 1.4 then return end
+
     if best ~= target_p then
-        if SA_lock.lastChar ~= best then
-            SA_lock.lastChar = best
-            SA_lock.blendT = 1.0
-        end
         target_p = best; target_char, target_part, target_hum = nil, nil, nil
     end
     if not best then return end
@@ -337,16 +251,10 @@ nearest_player=function()
 end
 
 local function sample_ping()
-    local ok, ms = pcall(function() return Stats.Network.ServerStatsItem["Data Ping"]:GetValue() end)
-    local rtt = (ok and type(ms) == "number" and ms > 0) and (ms / 1000) or 0
-    rtt = math.clamp(rtt, 0, 1)
-    push_rtt(rtt)
-    if EC.seen then
-        EC.rtt = EC.rtt * 0.85 + rtt * 0.15
-        EC.jitter = EC.jitter * 0.8 + math.abs(rtt - EC.rtt) * 0.2
-    else
-        EC.rtt = rtt; EC.seen = true
-    end
+    local ok,ms=pcall(function() return Stats.Network.ServerStatsItem["Data Ping"]:GetValue() end)
+    local rtt=(ok and type(ms)=="number" and ms>0) and (ms/1000) or 0
+    rtt=math.clamp(rtt,0,1)
+    if EC.seen then EC.rtt=EC.rtt*0.85+rtt*0.15 else EC.rtt=rtt; EC.seen=true end
 end
 
 -- ============================================================
@@ -406,6 +314,42 @@ local function SA_getVel(root)
     return v
 end
 
+local function SA_rayBlocked(a, b, ignore)
+    local list = { workspace.CurrentCamera }
+    for _, x in ipairs(ignore or {}) do table.insert(list, x) end
+    local p = RaycastParams.new()
+    p.FilterType = Enum.RaycastFilterType.Exclude
+    for _ = 1, 8 do
+        p.FilterDescendantsInstances = list
+        local hit = workspace:Raycast(a, b - a, p)
+        if not hit then return false end
+        local i = hit.Instance
+        if i.Transparency >= 0.9 or not i.CanCollide then
+            table.insert(list, i)
+        else
+            return true
+        end
+    end
+    return true
+end
+
+local SA_BODY = { "UpperTorso", "Torso", "LowerTorso", "Head", "HumanoidRootPart",
+    "RightUpperArm", "LeftUpperArm", "Right Arm", "Left Arm" }
+local function SA_anyVisible(targetChar, origin)
+    for _, n in ipairs(SA_BODY) do
+        local pt = targetChar:FindFirstChild(n)
+        if pt and pt:IsA("BasePart") then
+            if not SA_rayBlocked(origin, pt.Position, { targetChar }) then return true end
+        end
+    end
+    return false
+end
+
+-- ============================================================
+-- [AIM INTELLIGENCE] anti-spam-jumper · auto-predict · best-moment
+-- ============================================================
+
+-- фаза прыжка: 1.0 = лучший момент для выстрела
 local function SA_jumpScore(hum2, root)
     if not hum2 or not root then return 1 end
     local st = hum2:GetState()
@@ -420,7 +364,8 @@ local function SA_jumpScore(hum2, root)
     else return 1.0 end
 end
 
-local function SA_predict(hum2, root, lead, aimHint)
+-- авто-предикт: сам выбирает стратегию под состояние цели
+local function SA_predict(hum2, root, lead)
     if not SA.autoPred then
         local v = SA_getVel(root)
         return Vector3.new(v.X * lead, math.clamp(v.Y * lead, -3, 3), v.Z * lead)
@@ -428,7 +373,6 @@ local function SA_predict(hum2, root, lead, aimHint)
 
     local vPhys = root.AssemblyLinearVelocity
     local md = hum2 and hum2.MoveDirection or Vector3.zero
-    local vBase
 
     if hum2 and hum2.FloorMaterial == Enum.Material.Air then
         local dy = vPhys.Y * lead - 0.5 * workspace.Gravity * lead * lead
@@ -438,21 +382,7 @@ local function SA_predict(hum2, root, lead, aimHint)
     local vMove = md.Magnitude > 0.1
         and (md.Unit * (hum2 and hum2.WalkSpeed or 16))
         or Vector3.zero
-    vBase = vMove.Magnitude > 0.5 and vMove or SA_getVel(root)
-
-    if aimHint then
-        local toAim = aimHint - root.Position
-        if toAim.Magnitude > 0.01 then
-            local fwd = toAim.Unit
-            local right = fwd:Cross(Vector3.new(0, 1, 0))
-            if right.Magnitude > 0.01 then
-                right = right.Unit
-                local vRight = vBase:Dot(right)
-                local vFwd   = vBase:Dot(fwd)
-                vBase = fwd * vFwd + right * (vRight * SA.lateralBias)
-            end
-        end
-    end
+    local vBase = vMove.Magnitude > 0.5 and vMove or SA_getVel(root)
 
     if md.Magnitude > 0.1 then
         local right = root.CFrame.RightVector
@@ -463,6 +393,7 @@ local function SA_predict(hum2, root, lead, aimHint)
     return Vector3.new(vBase.X * lead, math.clamp(vBase.Y * lead, -3, 3), vBase.Z * lead)
 end
 
+-- композитный скор "стоит ли стрелять сейчас"
 local function SA_confidence(c, hum2, root, muzzle)
     if not SA.bestMoment then return 1 end
     local s = 1
@@ -471,23 +402,16 @@ local function SA_confidence(c, hum2, root, muzzle)
         s = s * SA_jumpScore(hum2, root)
     end
 
-    local wvis, wtot = 0, 0
+    local vis, tot = 0, 0
     for _, n in ipairs(SA_BODY) do
         local pt = c:FindFirstChild(n)
         if pt and pt:IsA("BasePart") then
-            local w = BODY_WEIGHT[n] or 1
-            wtot = wtot + w
-            if not SA_rayBlocked(muzzle, pt.Position, { c }) then
-                wvis = wvis + w
-            end
+            tot = tot + 1
+            if not SA_rayBlocked(muzzle, pt.Position, { c }) then vis = vis + 1 end
         end
     end
-    if wtot > 0 then
-        s = s * (0.35 + 0.65 * (wvis / wtot))
-    end
-
-    if EC.jitter > 0.05 then
-        s = s * math.clamp(1 - (EC.jitter - 0.05) * 3, 0.5, 1)
+    if tot > 0 then
+        s = s * (0.4 + 0.6 * (vis / tot))
     end
 
     local phase = SA_phase[c]
@@ -560,7 +484,7 @@ local function resolve()
 
     local hum2 = c:FindFirstChildOfClass("Humanoid")
 
-    local lead = math.clamp(rtt_p90() + EC.jitter * 0.5, 0.05, 0.45)
+    local lead = math.clamp(EC.rtt, 0.05, 0.45)
     if lead < 0.09 then lead = 0.09 end
 
     local off = SA_predict(hum2, root, lead)
@@ -571,12 +495,11 @@ local function resolve()
     local muzzle = att and att.WorldPosition or (myRoot and myRoot.Position)
     if not muzzle then return nil end
 
-    local hint = root.Position + off
-    local off2 = SA_predict(hum2, root, lead, hint)
-    off = off * 0.5 + off2 * 0.5
-
+    -- best-moment gate: тихо пропускаем кадр, если момент плохой
     local conf = SA_confidence(c, hum2, root, muzzle)
-    if conf < SA.confFloor then return nil end
+    if conf < SA.confFloor then
+        return nil
+    end
 
     local wbSpot
     if SA.wb and SA_rayBlocked(muzzle, root.Position, { c, myChar }) and not SA_anyVisible(c, muzzle) then
@@ -594,14 +517,9 @@ local function resolve()
         quietCf = SA_findQuietSpot(root, myChar)
     end
 
-    local order
-    if conf >= 0.75 then
-        order = { "Head", "UpperTorso", "Torso", "HumanoidRootPart", "LowerTorso" }
-    elseif SA.part == "Head" then
-        order = { "Head", "UpperTorso", "Torso", "HumanoidRootPart", "LowerTorso" }
-    else
-        order = { "UpperTorso", "Torso", "LowerTorso", "HumanoidRootPart", "Head" }
-    end
+    local order = SA.part == "Head"
+        and { "Head", "UpperTorso", "Torso", "HumanoidRootPart", "LowerTorso" }
+        or { "UpperTorso", "Torso", "LowerTorso", "HumanoidRootPart", "Head" }
 
     local fromPos = wbSpot or (quietCf and quietCf.Position) or muzzle
     rp.FilterDescendantsInstances = { myChar, workspace.CurrentCamera }
@@ -614,40 +532,13 @@ local function resolve()
             local dir = aimPos - fromPos
             local hit = workspace:Raycast(fromPos, dir, rp)
             if not hit or hit.Instance:IsDescendantOf(c) then
-                local w = BODY_WEIGHT[name] or 1
-                table.insert(candidates, {
-                    pos = aimPos,
-                    dist = (aimPos - fromPos).Magnitude,
-                    weight = w,
-                    name = name,
-                })
+                table.insert(candidates, { pos = aimPos, dist = (aimPos - fromPos).Magnitude })
             end
         end
     end
-
-    local picked
     if #candidates > 0 then
-        table.sort(candidates, function(a, b)
-            if a.weight ~= b.weight then return a.weight > b.weight end
-            return a.dist < b.dist
-        end)
-        for _, cand in ipairs(candidates) do
-            if cand.weight >= 1.5 or cand.name == order[1] then
-                picked = cand.pos; break
-            end
-        end
-        picked = picked or candidates[1].pos
-    end
-
-    if picked then
-        if SA_lock.blendT > 0 and SA_lock.lastPos then
-            local t = 1 - SA_lock.blendT
-            local smooth = t * SA.blend
-            picked = SA_lock.lastPos + (picked - SA_lock.lastPos) * smooth
-            SA_lock.blendT = math.max(0, SA_lock.blendT - 0.16)
-        end
-        SA_lock.lastPos = picked
-        return picked
+        table.sort(candidates, function(a, b) return a.dist < b.dist end)
+        return candidates[1].pos
     end
 
     if wbSpot then
@@ -1113,222 +1004,85 @@ task.spawn(function()
 end)
 
 -- ============================================================
--- [FLING] — четыре режима, усиленная физика
+-- [FLING]
 -- ============================================================
-
--- общий префикс: сохранить состояние, выключить seated, обнулить скорость
-local function flingSetup(hrp, hum2)
-    local old = {}
-    old.cf = hrp.CFrame
-    old.seated = hum2:GetStateEnabled(Enum.HumanoidStateType.Seated)
-    old.fall = workspace.FallenPartsDestroyHeight
-    old.camSubj = workspace.CurrentCamera and workspace.CurrentCamera.CameraSubject
-    pcall(function() hum2:SetStateEnabled(Enum.HumanoidStateType.Seated, false) end)
-    pcall(function() workspace.FallenPartsDestroyHeight = 0/0 end)
-    return old
-end
-
-local function flingTeardown(hrp, hum2, old)
-    pcall(function() hum2:SetStateEnabled(Enum.HumanoidStateType.Seated, old.seated) end)
-    pcall(function() workspace.FallenPartsDestroyHeight = old.fall end)
-    if workspace.CurrentCamera and old.camSubj then
-        pcall(function() workspace.CurrentCamera.CameraSubject = old.camSubj end)
+local function flingCore(thrp,thum,time)
+    local c=LP.Character
+    local hrp=c and c:FindFirstChild("HumanoidRootPart"); if not hrp then return false end
+    local hum2=c and c:FindFirstChildOfClass("Humanoid"); if not hum2 then return false end
+    if thum and thum.Sit then return false end
+    local orig=hrp.CFrame
+    local cam=workspace.CurrentCamera
+    local oldSubj=cam.CameraSubject
+    local oldFall=workspace.FallenPartsDestroyHeight
+    pcall(function() workspace.FallenPartsDestroyHeight=0/0 end)
+    pcall(function() cam.CameraSubject=thrp end)
+    local bv=Instance.new("BodyVelocity")
+    bv.MaxForce=Vector3.new(9e9,9e9,9e9) bv.Velocity=Vector3.zero bv.Parent=hrp
+    local se=hum2:GetStateEnabled(Enum.HumanoidStateType.Seated)
+    pcall(function() hum2:SetStateEnabled(Enum.HumanoidStateType.Seated,false) end)
+    local t0=os.clock()
+    local dur=time or 1.6
+    local ang=0
+    while os.clock()-t0<dur and hrp.Parent and thrp.Parent do
+        local tv=thrp.Velocity
+        if tv.Magnitude>50 and thum then tv=thum.MoveDirection*thum.WalkSpeed end
+        local lead=thrp.Position+tv*0.08
+        ang=ang+165
+        local r=ang%360
+        local off
+        if r<90 then off=Vector3.new(0,2.5,0)
+        elseif r<180 then off=Vector3.new(0,-2.5,0)
+        elseif r<270 then off=Vector3.new(2.5,0,0)
+        else off=Vector3.new(-2.5,0,0) end
+        local cf=CFrame.new(lead+off)*CFrame.Angles(math.rad(ang),0,0)
+        pcall(function()
+            hrp.CFrame=cf
+            c:SetPrimaryPartCFrame(cf)
+            hrp.Velocity=Vector3.new(9e8,9e8*10,9e8)
+            hrp.RotVelocity=Vector3.new(9e9,9e9,9e9)
+        end)
+        RS.Heartbeat:Wait()
     end
+    safe_destroy(bv)
+    pcall(function() hum2:SetStateEnabled(Enum.HumanoidStateType.Seated,se) end)
+    pcall(function() cam.CameraSubject=hum2 end)
     if hrp.Parent then
         pcall(function()
-            hrp.CFrame = old.cf
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
+            hrp.CFrame=orig
+            c:SetPrimaryPartCFrame(orig)
             hum2:ChangeState(Enum.HumanoidStateType.GettingUp)
+            hrp.Velocity=Vector3.zero
         end)
     end
-end
-
--- режим 1: orbit — цель вокруг жертвы с нарастающей угловой скоростью
-local function flingOrbit(hrp, thum, thrp, dur)
-    local ang = 0
-    local t0 = os.clock()
-    local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9) bv.Velocity = Vector3.zero bv.Parent = hrp
-    local bav = Instance.new("BodyAngularVelocity")
-    bav.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-    bav.AngularVelocity = Vector3.new(0, 0, 0)
-    bav.Parent = hrp
-    while os.clock() - t0 < dur and hrp.Parent and thrp.Parent do
-        local tv = thrp.Velocity
-        if tv.Magnitude > 50 and thum then tv = thum.MoveDirection * thum.WalkSpeed end
-        local lead = thrp.Position + tv * 0.08
-        ang = ang + 165
-        local r = ang % 360
-        local off
-        if r < 90 then off = Vector3.new(0, 2.5, 0)
-        elseif r < 180 then off = Vector3.new(0, -2.5, 0)
-        elseif r < 270 then off = Vector3.new(2.5, 0, 0)
-        else off = Vector3.new(-2.5, 0, 0) end
-        local cf = CFrame.new(lead + off) * CFrame.Angles(math.rad(ang), 0, 0)
-        pcall(function()
-            hrp.CFrame = cf
-            hrp.AssemblyLinearVelocity = Vector3.new(FLING.force, FLING.force * 10, FLING.force)
-            hrp.AssemblyAngularVelocity = Vector3.new(9e9, 9e9, 9e9)
-        end)
-        RS.Heartbeat:Wait()
-    end
-    safe_destroy(bv); safe_destroy(bav)
-end
-
--- режим 2: slam — прямая инъекция скорости через BodyVelocity+BodyAngularVelocity
-local function flingSlam(hrp, thum, thrp, dur)
-    local t0 = os.clock()
-    local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9) bv.P = 1e5 bv.Parent = hrp
-    local bav = Instance.new("BodyAngularVelocity")
-    bav.MaxTorque = Vector3.new(9e9, 9e9, 9e9) bav.P = 1e5 bav.Parent = hrp
-    while os.clock() - t0 < dur and hrp.Parent and thrp.Parent do
-        local dir = (thrp.Position - hrp.Position)
-        if dir.Magnitude < 1 then dir = Vector3.new(0, 1, 0) end
-        dir = dir.Unit
-        pcall(function()
-            bv.Velocity = dir * FLING.force + Vector3.new(0, FLING.force * 0.5, 0)
-            bav.AngularVelocity = Vector3.new(FLING.force, FLING.force, FLING.force)
-        end)
-        RS.Heartbeat:Wait()
-    end
-    safe_destroy(bv); safe_destroy(bav)
-end
-
--- режим 3: spin — вращение вокруг цели с накоплением угловой скорости
-local function flingSpin(hrp, thum, thrp, dur)
-    local t0 = os.clock()
-    local bav = Instance.new("BodyAngularVelocity")
-    bav.MaxTorque = Vector3.new(9e9, 9e9, 9e9) bav.Parent = hrp
-    local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9) bv.Parent = hrp
-    local spin = 0
-    while os.clock() - t0 < dur and hrp.Parent and thrp.Parent do
-        spin = spin + 800
-        local dir = (thrp.Position - hrp.Position)
-        if dir.Magnitude < 1 then dir = Vector3.new(0, 1, 0) end
-        dir = dir.Unit
-        pcall(function()
-            bav.AngularVelocity = Vector3.new(math.rad(spin) % (2*math.pi), spin, 0)
-            bv.Velocity = dir * (FLING.force * 0.5)
-            hrp.RotVelocity = Vector3.new(9e9, 9e9, 9e9)
-        end)
-        RS.Heartbeat:Wait()
-    end
-    safe_destroy(bav); safe_destroy(bv)
-end
-
--- режим 4: anchor-break — временная анкоризация, swing через pivot, потом отпуск
-local function flingAnchor(hrp, thum, thrp, dur)
-    local t0 = os.clock()
-    local wasAnchored = hrp.Anchored
-    local wasMassless = hrp.Massless
-    hrp.Anchored = false
-    hrp.Massless = true
-    local bav = Instance.new("BodyAngularVelocity")
-    bav.MaxTorque = Vector3.new(9e9, 9e9, 9e9) bav.Parent = hrp
-    local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9) bv.Parent = hrp
-    local angle = 0
-    while os.clock() - t0 < dur and hrp.Parent and thrp.Parent do
-        angle = angle + 240
-        local r = math.rad(angle)
-        local r2 = 8 + 4 * math.sin(r * 1.5)
-        local offset = Vector3.new(math.cos(r) * r2, 3 + 2 * math.sin(r * 2), math.sin(r) * r2)
-        pcall(function()
-            hrp.CFrame = CFrame.new(thrp.Position + offset) * CFrame.Angles(r * 3, r, 0)
-            hrp.AssemblyLinearVelocity = Vector3.new(FLING.force, FLING.force * 2, FLING.force)
-            hrp.AssemblyAngularVelocity = Vector3.new(9e9, 9e9, 9e9)
-            bav.AngularVelocity = Vector3.new(9e9, 9e9, 9e9)
-            bv.Velocity = Vector3.new(FLING.force, FLING.force * 3, FLING.force)
-        end)
-        RS.Heartbeat:Wait()
-    end
-    hrp.Anchored = wasAnchored
-    hrp.Massless = wasMassless
-    safe_destroy(bav); safe_destroy(bv)
-end
-
-local function flingCore(thrp, thum, dur)
-    local c = LP.Character
-    local hrp = c and c:FindFirstChild("HumanoidRootPart"); if not hrp then return false end
-    local hum2 = c:FindFirstChildOfClass("Humanoid"); if not hum2 then return false end
-    if thum and thum.Sit then return false end
-
-    local old = flingSetup(hrp, hum2)
-    local d = dur or FLING.duration
-
-    if FLING.mode == "orbit" then
-        flingOrbit(hrp, thum, thrp, d)
-    elseif FLING.mode == "slam" then
-        flingSlam(hrp, thum, thrp, d)
-    elseif FLING.mode == "spin" then
-        flingSpin(hrp, thum, thrp, d)
-    elseif FLING.mode == "anchor" then
-        flingAnchor(hrp, thum, thrp, d)
-    else
-        flingOrbit(hrp, thum, thrp, d)
-    end
-
-    flingTeardown(hrp, hum2, old)
+    pcall(function() workspace.FallenPartsDestroyHeight=oldFall end)
+    if oldSubj then pcall(function() cam.CameraSubject=oldSubj end) end
     return true
 end
-
-local function flingTarget(target, dur)
+local function flingTarget(target)
     if TROLL.flinging then return end
-    local tchar = target and target.Character; if not tchar then return end
-    local thrp = tchar:FindFirstChild("HumanoidRootPart") or tchar:FindFirstChild("Head"); if not thrp then return end
-    local thum = tchar:FindFirstChildOfClass("Humanoid")
-    TROLL.flinging = true
-    FLING.active = true
-    task.spawn(function()
-        flingCore(thrp, thum, dur or 2.2)
-        TROLL.flinging = false
-        FLING.active = false
-    end)
+    local tchar=target and target.Character; if not tchar then return end
+    local thrp=tchar:FindFirstChild("HumanoidRootPart") or tchar:FindFirstChild("Head"); if not thrp then return end
+    local thum=tchar:FindFirstChildOfClass("Humanoid")
+    TROLL.flinging=true
+    task.spawn(function() flingCore(thrp,thum,2.2); TROLL.flinging=false end)
 end
-
-local function flingNearest()
-    local t = nearest_player()
-    if t then flingTarget(t) end
-end
-
+local function flingNearest() local t=nearest_player(); if t then flingTarget(t) end end
 local function flingAll()
     if TROLL.flinging then return end
-    TROLL.flinging = true
-    FLING.active = true
+    TROLL.flinging=true
     task.spawn(function()
         for _,p in ipairs(Players:GetPlayers()) do
-            if p ~= LP and p.Character then
-                local thrp = p.Character:FindFirstChild("HumanoidRootPart") or p.Character:FindFirstChild("Head")
-                local thum = p.Character:FindFirstChildOfClass("Humanoid")
-                if thrp and HRP() then
-                    local c = LP.Character
-                    local hrp = c and c:FindFirstChild("HumanoidRootPart")
-                    local hum2 = c and c:FindFirstChildOfClass("Humanoid")
-                    if hrp and hum2 then
-                        local old = flingSetup(hrp, hum2)
-                        if FLING.mode == "orbit" then flingOrbit(hrp, thum, thrp, 1.5)
-                        elseif FLING.mode == "slam" then flingSlam(hrp, thum, thrp, 1.5)
-                        elseif FLING.mode == "spin" then flingSpin(hrp, thum, thrp, 1.5)
-                        elseif FLING.mode == "anchor" then flingAnchor(hrp, thum, thrp, 1.5)
-                        else flingOrbit(hrp, thum, thrp, 1.5) end
-                        flingTeardown(hrp, hum2, old)
-                    end
-                end
-                task.wait(0.1)
+            if p~=LP and p.Character then
+                local thrp=p.Character:FindFirstChild("HumanoidRootPart") or p.Character:FindFirstChild("Head")
+                local thum=p.Character:FindFirstChildOfClass("Humanoid")
+                if thrp and HRP() then flingCore(thrp,thum,1.5); task.wait(0.15) end
             end
         end
-        TROLL.flinging = false
-        FLING.active = false
+        TROLL.flinging=false
     end)
 end
-
-local function stopTroll()
-    TROLL.flinging = false
-    FLING.active = false
-end
+local function stopTroll() TROLL.flinging=false end
 
 -- ============================================================
 -- [VISUALS]
@@ -2041,32 +1795,23 @@ end })
 
 TabCombat:AddSection({ Name = "Intelligence" })
 TabCombat:AddToggle({ Name = "Anti Spam-Jumper", Default = true, Callback = function(v)
-    SA.antiJump = v; MakeNotif("Anti Jump", v and "enabled" or "disabled", 2)
+    SA.antiJump = v
+    MakeNotif("Anti Jump", v and "enabled" or "disabled", 2)
 end })
 TabCombat:AddSlider({ Name = "Jump Radar", Min = 5, Max = 100, Default = 25, Increment = 1,
     ValueName = "studs", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) SA.jumpRadar = v end })
 TabCombat:AddToggle({ Name = "Auto Predict", Default = true, Callback = function(v)
-    SA.autoPred = v; MakeNotif("Auto Predict", v and "enabled" or "disabled", 2)
+    SA.autoPred = v
+    MakeNotif("Auto Predict", v and "enabled" or "disabled", 2)
 end })
 TabCombat:AddToggle({ Name = "Best Moment", Default = true, Callback = function(v)
-    SA.bestMoment = v; MakeNotif("Best Moment", v and "enabled" or "disabled", 2)
+    SA.bestMoment = v
+    MakeNotif("Best Moment", v and "enabled" or "disabled", 2)
 end })
 TabCombat:AddSlider({ Name = "Confidence Floor", Min = 0.1, Max = 0.9, Default = 0.5, Increment = 0.05,
     ValueName = "score", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) SA.confFloor = v end })
-TabCombat:AddSlider({ Name = "FOV", Min = 30, Max = 360, Default = 180, Increment = 5,
-    ValueName = "deg", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) SA.fov = v end })
-TabCombat:AddSlider({ Name = "Angle Bias", Min = 0.0, Max = 1.0, Default = 0.4, Increment = 0.05,
-    ValueName = "coef", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) SA.angleBias = v end })
-TabCombat:AddSlider({ Name = "Lateral Bias", Min = 1.0, Max = 2.5, Default = 1.6, Increment = 0.1,
-    ValueName = "x", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) SA.lateralBias = v end })
-TabCombat:AddSlider({ Name = "Switch Blend", Min = 0.0, Max = 1.0, Default = 0.35, Increment = 0.05,
-    ValueName = "coef", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) SA.blend = v end })
 
 TabCombat:AddButton({ Name = "Switch Aim Part", Callback = function()
     SA.part = SA.part == "Torso" and "Head" or "Torso"
@@ -2169,22 +1914,9 @@ TabMove:AddToggle({ Name = "Anti Fall", Default = false, Callback = function(v) 
 TabMove:AddToggle({ Name = "Anti Fling", Default = false, Callback = function(v) fl.antifling=v end })
 TabMove:AddToggle({ Name = "Ctrl+Click TP", Default = false, Callback = function(v) MOVE.ctrltp=v end })
 
--- TROLL — обновлённые режимы fling
+-- TROLL
 local TabTroll = Window:MakeTab({ Name = "Troll", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 TabTroll:AddSection({ Name = "Fling" })
-TabTroll:AddDropdown({
-    Name = "Fling Mode",
-    Default = "orbit",
-    Options = { "orbit", "slam", "spin", "anchor" },
-    Callback = function(v) FLING.mode = v; MakeNotif("Fling Mode", v, 2) end,
-})
-TabTroll:AddSlider({ Name = "Fling Force", Min = 1e6, Max = 9e9, Default = 9e8, Increment = 1e7,
-    ValueName = "N", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) FLING.force = v end })
-TabTroll:AddSlider({ Name = "Fling Duration", Min = 0.5, Max = 5, Default = 2.2, Increment = 0.1,
-    ValueName = "s", Color = Color3.fromRGB(86,76,251),
-    Callback = function(v) FLING.duration = v end })
-
 TabTroll:AddButton({ Name = "Fling Nearest", Callback = function() flingNearest() end })
 TabTroll:AddButton({ Name = "Fling All", Callback = function() flingAll() end })
 TabTroll:AddButton({ Name = "Fling Murderer", Callback = function()
@@ -2236,7 +1968,7 @@ TabTroll:AddButton({ Name = "Dizzy", Callback = function()
     task.delay(3, function() MOVE.spin=false; pcall(stopSpin) end)
 end })
 
--- VISUALS
+-- VISUALS — палитра у каждого эффекта своя
 local TabVisuals = Window:MakeTab({ Name = "Visuals", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 
 local function rebuildEffect(key)
@@ -2475,17 +2207,12 @@ end)
 ADDON.hb = RS.Heartbeat:Connect(function()
     if not ADDON.loaded then return end
     pcall(function()
+        -- чистка phase-трекера
         for k in pairs(SA_phase) do
             local h = k and k:FindFirstChildOfClass("Humanoid")
             if not k or not k.Parent or not h or h.Health <= 0 then
                 SA_phase[k] = nil
             end
-        end
-
-        if not target_p or not target_p.Character or not target_p.Character.Parent then
-            SA_lock.lastChar = nil
-            SA_lock.lastPos = nil
-            SA_lock.blendT = 0
         end
 
         local now = os.clock()
