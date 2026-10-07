@@ -2,7 +2,7 @@
 --!nolint
 -- ============================================================
 -- StarWare v3 · Orion UI (Qanuir fork)
--- aim intelligence: anti-spam-jumper · auto-predict · best-moment
+-- aim intelligence: anti-spam-jumper · auto-predict · best-moment · wall-check
 -- ============================================================
 if getgenv().UN_ADDON and getgenv().UN_ADDON.loaded then
     pcall(function() getgenv().UN_ADDON.unload() end)
@@ -56,7 +56,8 @@ end
 -- [STATE]
 -- ============================================================
 local SA = { enabled=true, part="Torso", quiet=true, wb=true, wbTemp=nil, antiJump=true,
-    autoPred=true, bestMoment=true, jumpRadar=25, confFloor=0.5 }
+    autoPred=true, bestMoment=true, jumpRadar=25, confFloor=0.5,
+    wallCheck=true, wallCheckCamera=true }
 local SA_hist = {}
 local SA_phase = {}
 local KS = { enabled=false }
@@ -346,6 +347,58 @@ local function SA_anyVisible(targetChar, origin)
 end
 
 -- ============================================================
+-- [WALL CHECK]
+-- ============================================================
+-- LOS-гейт: чистая линия от origin (и опц. от камеры) до любого хитбокса.
+-- true = стрелять можно, false = стена без обхода.
+local function SA_wallCheck(origin, targetChar)
+    if not SA.wallCheck then return true end
+    if not origin or not targetChar then return false end
+
+    local bodies = {}
+    for _, n in ipairs(SA_BODY) do
+        local p = targetChar:FindFirstChild(n)
+        if p and p:IsA("BasePart") then bodies[#bodies + 1] = p end
+    end
+    if #bodies == 0 then return false end
+
+    local ig = { targetChar }
+    local function clearFrom(o)
+        if not o then return false end
+        for _, p in ipairs(bodies) do
+            if not SA_rayBlocked(o, p.Position, ig) then return true end
+        end
+        return false
+    end
+
+    if clearFrom(origin) then return true end
+    if SA.wallCheckCamera then
+        local cam = workspace.CurrentCamera
+        local cp = cam and cam.CFrame.Position
+        if cp and (cp - origin).Magnitude > 0.5 and clearFrom(cp) then
+            return true
+        end
+    end
+    return false
+end
+
+-- какой именно хитбокс видно (ближайший к origin) — для точного aim point
+local function SA_visiblePart(targetChar, origin)
+    local best, bd = nil, math.huge
+    local ig = { targetChar }
+    for _, n in ipairs(SA_BODY) do
+        local p = targetChar:FindFirstChild(n)
+        if p and p:IsA("BasePart") then
+            if not SA_rayBlocked(origin, p.Position, ig) then
+                local d = (p.Position - origin).Magnitude
+                if d < bd then bd = d; best = p end
+            end
+        end
+    end
+    return best
+end
+
+-- ============================================================
 -- [AIM INTELLIGENCE] anti-spam-jumper · auto-predict · best-moment
 -- ============================================================
 
@@ -494,6 +547,17 @@ local function resolve()
     local att = myRoot and myRoot:FindFirstChild("GunRaycastAttachment")
     local muzzle = att and att.WorldPosition or (myRoot and myRoot.Position)
     if not muzzle then return nil end
+
+    -- >>> WALL CHECK <<<
+    if SA.wallCheck then
+        local losMuzzle = SA_wallCheck(muzzle, c)
+        local camCf = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position
+        local losCamera = SA.wallCheckCamera and SA_wallCheck(camCf, c)
+        if not (losMuzzle or losCamera) then
+            -- нет чистой линии — либо wallbang, либо пропуск кадра
+            if not SA.wb then return nil end
+        end
+    end
 
     -- best-moment gate: тихо пропускаем кадр, если момент плохой
     local conf = SA_confidence(c, hum2, root, muzzle)
@@ -1813,6 +1877,16 @@ TabCombat:AddSlider({ Name = "Confidence Floor", Min = 0.1, Max = 0.9, Default =
     ValueName = "score", Color = Color3.fromRGB(86,76,251),
     Callback = function(v) SA.confFloor = v end })
 
+TabCombat:AddSection({ Name = "Wall Check" })
+TabCombat:AddToggle({ Name = "Wall Check", Default = true, Callback = function(v)
+    SA.wallCheck = v
+    MakeNotif("Wall Check", v and "enabled" or "disabled", 2)
+end })
+TabCombat:AddToggle({ Name = "  · Camera LOS", Default = true, Callback = function(v)
+    SA.wallCheckCamera = v
+    MakeNotif("Camera LOS", v and "enabled" or "disabled", 2)
+end })
+
 TabCombat:AddButton({ Name = "Switch Aim Part", Callback = function()
     SA.part = SA.part == "Torso" and "Head" or "Torso"
     MakeNotif("Aim Part", SA.part, 2)
@@ -2330,4 +2404,4 @@ end
 
 OrionLib:Init()
 MakeNotif("StarWare", "Loaded · right shift to hide menu", 4)
-print("[addon] v3 ready — Orion UI (Qanuir fork)")
+print("[addon] v3 ready — Orion UI (Qanuir fork) · wall-check")
